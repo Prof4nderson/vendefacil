@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createHash, randomInt } from "node:crypto";
 import { q, q1 } from "./db.server";
 import { getAppSession, getTenantContext } from "./tenant.server";
+import { getUserMessagesAfterLogin } from "./sysadm.functions";
 
 const signupSchema = z.object({
   name: z.string().min(2), login: z.string().min(3), password: z.string().min(6),
@@ -89,14 +90,18 @@ export const verifyAccount = createServerFn({ method: "POST" }).validator((data)
 });
 
 export const loginAccount = createServerFn({ method: "POST" }).validator((data) => z.object({ login: z.string().min(3), password: z.string().min(1) }).parse(data)).handler(async ({ data }) => {
-  const user = await q1<{ id: string; name: string; email: string; workspace_id: string; password_hash: string; verified_at: string | null }>(
-    "select id,name,email,workspace_id,password_hash,verified_at from app_users where lower(login)=lower($1) or lower(email)=lower($1)", [data.login.trim()]);
+  const user = await q1<{ id: string; name: string; email: string; workspace_id: string; password_hash: string; verified_at: string | null; status: string; status_note: string | null }>(
+    "select id,name,email,workspace_id,password_hash,verified_at,status,status_note from app_users where lower(login)=lower($1) or lower(email)=lower($1)", [data.login.trim()]);
   if (!user || hash(data.password) !== user.password_hash) throw new Error("Login ou senha inválidos");
+  if (user.status === "disabled") throw new Error(`Conta desativada${user.status_note ? `: ${user.status_note}` : ". Procure o administrador."}`);
+  if (user.status === "suspended") throw new Error(`Conta suspensa${user.status_note ? `: ${user.status_note}` : ". Procure o administrador."}`);
   if (!user.verified_at) throw new Error("Confirme seu email antes de entrar");
+  await q("update app_users set last_login_at=now() where id=$1", [user.id]);
+  const messages = await getUserMessagesAfterLogin(user.id);
   await provisionRoutePasswords(user.workspace_id);
   const session = await getAppSession();
   await session.update({ userId: user.id, workspaceId: user.workspace_id, name: user.name, email: user.email });
-  return { ok: true as const, name: user.name, email: user.email };
+  return { ok: true as const, name: user.name, email: user.email, messages };
 });
 
 export const logoutAccount = createServerFn({ method: "POST" }).handler(async () => { await (await getAppSession()).clear(); return { ok: true as const }; });

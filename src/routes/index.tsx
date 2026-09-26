@@ -36,6 +36,7 @@ import {
 import { toast } from "sonner";
 import { getMenuData, getSettings } from "@/lib/public.functions";
 import { createOrder } from "@/lib/orders.functions";
+import { createWorkspaceBackup, restoreWorkspaceBackup } from "@/lib/backup.functions";
 import {
   cancelSale,
   finalizeOpenSale,
@@ -210,6 +211,8 @@ function PosPage() {
   const register = useServerFn(registerAccount);
   const login = useServerFn(loginAccount);
   const changeUserPassword = useServerFn(changePassword);
+  const makeBackup = useServerFn(createWorkspaceBackup);
+  const restoreBackup = useServerFn(restoreWorkspaceBackup);
   const logout = useServerFn(logoutAccount);
   const verify = useServerFn(verifyAccount);
   const addSuggestion = useServerFn(addCatalogProduct);
@@ -281,6 +284,7 @@ function PosPage() {
     { product_id: string; name: string; qty: number; price: number | string }[]
   >([]);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [profileWorking, setProfileWorking] = useState(false);
   const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -672,6 +676,7 @@ function PosPage() {
       localStorage.setItem("vendefacil-email", result.email);
       setShowAuth(null);
       toast.success("Bem-vindo ao VendeFácil");
+      for (const message of result.messages ?? []) toast.info(`Mensagem da administração: ${message.message}`);
       window.location.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Login inválido");
@@ -738,6 +743,28 @@ function PosPage() {
     } finally {
       setProfileWorking(false);
     }
+  }
+  async function downloadBackup() {
+    try {
+      const backup = await makeBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `vendefacil-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Cópia de segurança baixada");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Não foi possível fazer a cópia"); }
+  }
+  async function uploadBackup(file: File) {
+    if (!window.confirm("Restaurar esta cópia substituirá os dados atuais deste estabelecimento. Continuar?")) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      await restoreBackup({ data: { backup } });
+      toast.success("Cópia restaurada");
+      window.location.reload();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Cópia inválida ou não foi possível restaurar"); }
   }
   async function logoff() {
     await logout().catch(() => undefined);
@@ -847,50 +874,15 @@ function PosPage() {
               )}
               <button
                 onClick={() => {
-                  setShowCatalog(true);
-                  setShowMenu(false);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
-              >
-                <Package className="h-4 w-4 text-primary" /> Importar CSV / produtos
-              </button>
-              <button
-                onClick={() => {
                   window.location.href = "/vendas";
                 }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
                 <WalletCards className="h-4 w-4 text-primary" /> Ver vendas
               </button>
-              <button
-                onClick={() => {
-                  setShowCustomize(true);
-                  setShowMenu(false);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
-              >
-                <Settings2 className="h-4 w-4 text-primary" /> Personalizar
+              <button onClick={() => { setShowSettings(true); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                <Settings2 className="h-4 w-4 text-primary" /> Configurações
               </button>
-              <button
-                onClick={openSchemaTool}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
-              >
-                <BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco
-              </button>
-              {authenticated && <button
-                onClick={() => { void openProfile(); setShowMenu(false); }}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
-              >
-                <CircleUserRound className="h-4 w-4 text-primary" /> Meus dados
-              </button>}
-              {authenticated && (
-                <button
-                  onClick={() => { void openProfile(); setShowMenu(false); }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
-                >
-                  <Settings2 className="h-4 w-4 text-primary" /> Trocar senha
-                </button>
-              )}
               <button
                 onClick={logoff}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-red-300 hover:bg-secondary"
@@ -1340,6 +1332,20 @@ function PosPage() {
         )}
       </button>
       <DeveloperBadge />
+      {showSettings && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4" onClick={() => setShowSettings(false)}>
+          <div className="glass-card w-full max-w-md rounded-[1.5rem] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between"><div><p className="eyebrow">Sistema</p><h2 className="font-display text-2xl font-bold">Configurações</h2></div><button onClick={() => setShowSettings(false)}><X /></button></div>
+            <div className="mt-4 space-y-2">
+              <button onClick={() => { setShowCustomize(true); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><Settings2 className="h-4 w-4 text-primary" /> Personalizar</button>
+              {authenticated && <button onClick={() => { void openProfile(); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><CircleUserRound className="h-4 w-4 text-primary" /> Trocar senha</button>}
+              <button onClick={() => { void openSchemaTool(); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco</button>
+              <button onClick={() => { setShowCatalog(true); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><Package className="h-4 w-4 text-primary" /> Importar CSV / produtos</button>
+              <div className="mt-4 rounded-xl border border-primary/20 p-3"><p className="mb-2 text-sm font-bold">Cópia de segurança</p><div className="grid grid-cols-2 gap-2"><button onClick={downloadBackup} className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Fazer cópia</button><label className="cursor-pointer rounded-xl bg-secondary px-3 py-2 text-center text-xs font-bold">Restaurar cópia<input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadBackup(file); e.currentTarget.value = ""; }} /></label></div></div>
+            </div>
+          </div>
+        </div>
+      )}
       {showProfile && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"

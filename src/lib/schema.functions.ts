@@ -20,6 +20,7 @@ const requiredColumns: Record<string, string[]> = {
   couriers: ["workspace_id"],
   app_settings: ["workspace_id"],
   route_passwords: ["workspace_id"],
+  app_users: ["status", "status_note", "last_login_at"],
 };
 
 export type SalesSchemaStatus = {
@@ -213,6 +214,16 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "create index if not exists customers_credit_idx on customers(credit_balance desc)",
     );
+    await client.query("create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now())");
+    await client.query("insert into sysadm_credentials(id,password_hash) values (1,'d2998be2f35a19a97e6e32ebd39f4ba7df2d8df3c30b8762662fa744a961f52f') on conflict (id) do nothing");
+    await client.query("alter table app_users add column if not exists status text not null default 'active'");
+    await client.query("alter table app_users add column if not exists status_note text");
+    await client.query("alter table app_users add column if not exists last_login_at timestamptz");
+    await client.query("alter table app_users drop constraint if exists app_users_status_check");
+    await client.query("alter table app_users add constraint app_users_status_check check (status in ('active','disabled','suspended'))");
+    await client.query("create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz)");
+    await client.query("alter table catalog_suggestions add column if not exists image_url text");
+    await client.query("alter table products add column if not exists catalog_suggestion_id uuid references catalog_suggestions(id) on delete set null");
   });
   return inspectSalesSchema();
 });

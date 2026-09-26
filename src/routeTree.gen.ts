@@ -17,6 +17,7 @@ import { Route as EntregaRouteImport } from './routes/entrega'
 import { Route as FavoritosRouteImport } from './routes/favoritos'
 import { Route as OfertasRouteImport } from './routes/ofertas'
 import { Route as PedidosRouteImport } from './routes/pedidos'
+import { Route as SysadmRouteImport } from './routes/sysadm'
 import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as PedidoIdRouteImport } from './routes/pedido.$id'
 
@@ -60,6 +61,11 @@ const PedidosRoute = PedidosRouteImport.update({
   path: '/pedidos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SysadmRoute = SysadmRouteImport.update({
+  id: '/sysadm',
+  path: '/sysadm',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VendasRoute = VendasRouteImport.update({
   id: '/vendas',
   path: '/vendas',
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
@@ -92,6 +99,7 @@ export interface FileRoutesByTo {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
@@ -105,6 +113,7 @@ export interface FileRoutesById {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/sysadm'
     | '/vendas'
     | '/pedido/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/sysadm'
     | '/vendas'
     | '/pedido/$id'
   id:
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/sysadm'
     | '/vendas'
     | '/pedido/$id'
   fileRoutesById: FileRoutesById
@@ -156,6 +168,7 @@ export interface RootRouteChildren {
   FavoritosRoute: typeof FavoritosRoute
   OfertasRoute: typeof OfertasRoute
   PedidosRoute: typeof PedidosRoute
+  SysadmRoute: typeof SysadmRoute
   VendasRoute: typeof VendasRoute
   PedidoIdRoute: typeof PedidoIdRoute
 }
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PedidosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sysadm': {
+      id: '/sysadm'
+      path: '/sysadm'
+      fullPath: '/sysadm'
+      preLoaderRoute: typeof SysadmRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/vendas': {
       id: '/vendas'
       path: '/vendas'
@@ -244,6 +264,7 @@ const rootRouteChildren: RootRouteChildren = {
   FavoritosRoute: FavoritosRoute,
   OfertasRoute: OfertasRoute,
   PedidosRoute: PedidosRoute,
+  SysadmRoute: SysadmRoute,
   VendasRoute: VendasRoute,
   PedidoIdRoute: PedidoIdRoute,
 }
