@@ -246,6 +246,7 @@ function PosPage() {
   );
   const [creditAmount, setCreditAmount] = useState(0);
   const [showSaleCustomer, setShowSaleCustomer] = useState(false);
+  const [selectingFinalizationCustomer, setSelectingFinalizationCustomer] = useState(false);
   const [customerNameDraft, setCustomerNameDraft] = useState("");
   const [openCustomerSales, setOpenCustomerSales] = useState<SaleRow[]>([]);
   const [loadingCustomerSales, setLoadingCustomerSales] = useState(false);
@@ -351,13 +352,17 @@ function PosPage() {
     setCustomerNameDraft("");
     setShowSaleCustomer(true);
   }
-  function selectSaleCustomer(customer: Customer) {
+  async function selectSaleCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
     setCart({});
     setShowSaleCustomer(false);
-    void inspectCustomer(customer);
+    await inspectCustomer(customer);
+    if (selectingFinalizationCustomer) {
+      setSelectingFinalizationCustomer(false);
+      setShowPayment(true);
+    }
   }
-  function addNamedCustomer() {
+  async function addNamedCustomer() {
     const name = customerNameDraft.trim();
     if (!name) return toast.error("Informe o nome do cliente");
     const id = `c-${Date.now()}`;
@@ -368,7 +373,11 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
     setShowSaleCustomer(false);
-    void inspectCustomer({ id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 });
+    await inspectCustomer({ id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 });
+    if (selectingFinalizationCustomer) {
+      setSelectingFinalizationCustomer(false);
+      setShowPayment(true);
+    }
   }
   async function inspectCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
@@ -857,32 +866,36 @@ function PosPage() {
               </button>
             </div>
             <div className="space-y-2">
-              {customers.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => inspectCustomer(c)}
-                  className={`flex w-full items-center gap-3 rounded-xl p-3 text-left ${activeCustomer === c.id ? "bg-primary/15 ring-1 ring-primary/40" : "bg-secondary/50"}`}
-                >
-                  <div className="grid h-9 w-9 place-items-center rounded-full bg-background text-xs font-black text-primary">
-                    {c.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .slice(0, 2)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{c.name}</p>
-                    <p className="text-xs text-muted-foreground">{c.note}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold">{c.items} itens</p>
-                    <p className="text-xs text-primary">{brl(c.total)}</p>
-                    {c.credit > 0 && (
-                      <p className="text-[10px] font-bold text-amber-300">Fiado {brl(c.credit)}</p>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {customers
+                .filter((c) => c.id === "consumer" || c.items > 0 || c.total > 0 || c.credit > 0)
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => inspectCustomer(c)}
+                    className={`flex w-full items-center gap-3 rounded-xl p-3 text-left ${activeCustomer === c.id ? "bg-primary/15 ring-1 ring-primary/40" : "bg-secondary/50"}`}
+                  >
+                    <div className="grid h-9 w-9 place-items-center rounded-full bg-background text-xs font-black text-primary">
+                      {c.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{c.name}</p>
+                      <p className="text-xs text-muted-foreground">{c.note}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold">{c.items} itens</p>
+                      <p className="text-xs text-primary">{brl(c.total)}</p>
+                      {c.credit > 0 && (
+                        <p className="text-[10px] font-bold text-amber-300">
+                          Fiado {brl(c.credit)}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
             </div>
             <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
               <div className="flex items-center justify-between">
@@ -1480,6 +1493,7 @@ function PosPage() {
             <button
               onClick={() => {
                 setShowPayment(false);
+                setSelectingFinalizationCustomer(true);
                 setCustomerNameDraft("");
                 setShowSaleCustomer(true);
               }}
