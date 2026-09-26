@@ -242,6 +242,7 @@ function PosPage() {
   const [customerNameDraft, setCustomerNameDraft] = useState("");
   const [openCustomerSales, setOpenCustomerSales] = useState<SaleRow[]>([]);
   const [loadingCustomerSales, setLoadingCustomerSales] = useState(false);
+  const [showCustomerPanel, setShowCustomerPanel] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [editingItems, setEditingItems] = useState<
     { product_id: string; name: string; qty: number; price: number | string }[]
@@ -339,6 +340,7 @@ function PosPage() {
   async function inspectCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
     setCart({});
+    setShowCustomerPanel(true);
     setLoadingCustomerSales(true);
     try {
       setOpenCustomerSales(await loadOpenSales({ data: { customerName: customer.name } }));
@@ -1046,6 +1048,92 @@ function PosPage() {
             >
               Salvar preferências
             </Button>
+          </div>
+        </div>
+      )}
+      {showCustomerPanel && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowCustomerPanel(false)}
+        >
+          <div
+            className="glass-card max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Atendimento</p>
+                <h2 className="font-display text-2xl font-bold">{currentCustomer.name}</h2>
+              </div>
+              <button onClick={() => setShowCustomerPanel(false)}>
+                <X />
+              </button>
+            </div>
+            <div className="mt-4 rounded-xl bg-primary/10 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold">Total devido</span>
+                <strong className="font-display text-2xl text-amber-300">{brl(totalDue)}</strong>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pedidos abertos + fiado acumulado
+              </p>
+            </div>
+            {loadingCustomerSales ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Carregando pedidos em aberto...
+              </div>
+            ) : openCustomerSales.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Nenhum pedido em aberto para este cliente.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {openCustomerSales.map((sale) => (
+                  <div key={sale.id} className="rounded-xl bg-secondary/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <b>Venda #{sale.order_number}</b>
+                      <b className="text-primary">{brl(sale.total)}</b>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {sale.items.map((item, index) => (
+                        <p key={`${item.name}-${index}`} className="text-xs text-muted-foreground">
+                          {item.qty}× {item.name} — {brl(Number(item.price) * item.qty)}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => startEditingSale(sale)}
+                        className="rounded-lg bg-background px-3 py-2 text-xs font-bold"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => cancelOpenCustomerSale(sale.id)}
+                        className="rounded-lg bg-red-400/10 px-3 py-2 text-xs font-bold text-red-300"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={() => finishOpenSale(sale.id)}
+                        className="neon-button flex-1 rounded-lg px-3 py-2 text-xs font-bold"
+                      >
+                        Finalizar pedido
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              disabled={
+                loadingCustomerSales || (!openCustomerSales.length && !currentCustomer.credit)
+              }
+              onClick={() => setShowPayment(true)}
+              className="neon-button mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CreditCard className="h-5 w-5" /> Finalizar consumo · {brl(totalDue)}
+            </button>
           </div>
         </div>
       )}
