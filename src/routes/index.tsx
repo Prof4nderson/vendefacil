@@ -59,14 +59,13 @@ import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [menu, settings, suggestions, savedCustomers, openCustomerSummaries] = await Promise.all([
+    const [menu, settings, suggestions, savedCustomers] = await Promise.all([
       getMenuData(),
       getSettings(),
       getCatalogSuggestions(),
       getCustomers(),
-      getOpenCustomerSummaries(),
     ]);
-    return { menu, settings, suggestions, savedCustomers, openCustomerSummaries };
+    return { menu, settings, suggestions, savedCustomers };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -181,8 +180,7 @@ const fallbackCategories: Category[] = [
 ];
 
 function PosPage() {
-  const { menu, settings, suggestions, savedCustomers, openCustomerSummaries } =
-    Route.useLoaderData();
+  const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
   const products = (menu.products as Product[])?.length
     ? (menu.products as Product[])
     : fallbackProducts;
@@ -196,6 +194,7 @@ function PosPage() {
   const addSuggestion = useServerFn(addCatalogProduct);
   const importCsv = useServerFn(importCatalogCsv);
   const loadOpenSales = useServerFn(getOpenCustomerSales);
+  const loadCustomerSummaries = useServerFn(getOpenCustomerSummaries);
   const cancelOpenSale = useServerFn(cancelSale);
   const finalizeSale = useServerFn(finalizeOpenSale);
   const updateSale = useServerFn(updateOpenSale);
@@ -217,16 +216,8 @@ function PosPage() {
       id: c.id,
       name: c.name,
       note: c.phone || "Cliente cadastrado",
-      total: Number(
-        openCustomerSummaries.find(
-          (summary) => summary.customer_name.toLowerCase() === c.name.toLowerCase(),
-        )?.total ?? 0,
-      ),
-      items: Number(
-        openCustomerSummaries.find(
-          (summary) => summary.customer_name.toLowerCase() === c.name.toLowerCase(),
-        )?.items ?? 0,
-      ),
+      total: 0,
+      items: 0,
       credit: Number(c.credit_balance),
     })),
   ]);
@@ -284,6 +275,27 @@ function PosPage() {
     localStorage.setItem("vendefacil-font-scale", String(fontScale));
     localStorage.setItem("vendefacil-primary-color", primaryColor);
   }, [fontScale, primaryColor]);
+  useEffect(() => {
+    let active = true;
+    void loadCustomerSummaries()
+      .then((summaries) => {
+        if (!active) return;
+        setCustomers((old) =>
+          old.map((customer) => {
+            const summary = summaries.find(
+              (item) => item.customer_name.toLowerCase() === customer.name.toLowerCase(),
+            );
+            return summary
+              ? { ...customer, total: Number(summary.total), items: Number(summary.items) }
+              : customer;
+          }),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [loadCustomerSummaries]);
 
   const visible = useMemo(
     () =>
