@@ -387,6 +387,12 @@ function PosPage() {
     try {
       await finalizeSale({ data: { orderId } });
       setOpenCustomerSales((old) => old.filter((s) => s.id !== orderId));
+      if (openCustomerSales.length <= 1) {
+        setCustomers((old) =>
+          old.map((c) => (c.id === activeCustomer ? { ...c, total: 0, items: 0, credit: 0 } : c)),
+        );
+        setShowCustomerPanel(false);
+      }
       toast.success("Pedido finalizado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível finalizar");
@@ -527,6 +533,10 @@ function PosPage() {
       setShowPayment(false);
       setCreditAmount(0);
       setOpenCustomerSales([]);
+      setCustomers((old) =>
+        old.map((c) => (c.id === activeCustomer ? { ...c, total: 0, items: 0, credit: 0 } : c)),
+      );
+      setShowCustomerPanel(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar a venda");
     } finally {
@@ -1467,6 +1477,22 @@ function PosPage() {
                 <X />
               </button>
             </div>
+            <button
+              onClick={() => {
+                setShowPayment(false);
+                setCustomerNameDraft("");
+                setShowSaleCustomer(true);
+              }}
+              className="mt-4 flex w-full items-center justify-between rounded-xl border border-primary/30 bg-primary/5 px-3 py-3 text-left"
+            >
+              <span>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-primary">
+                  Cliente do consumo
+                </span>
+                <span className="text-sm font-black">{currentCustomer.name}</span>
+              </span>
+              <span className="text-xs font-bold text-primary">Selecionar / incluir</span>
+            </button>
             <div className="mt-5 grid grid-cols-2 gap-2">
               {PAYMENT_METHODS.map((m) => (
                 <button
