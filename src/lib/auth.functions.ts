@@ -9,6 +9,17 @@ const signupSchema = z.object({
   whatsapp: z.string().min(8), email: z.string().email(),
 });
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+async function provisionRoutePasswords(workspaceId: string) {
+  await q(
+    `insert into route_passwords (workspace_id, route, password_hash) values
+      ($1,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+      ($1,'cozinha','50263d56d9e862db1767204ed2fc5c264cfe2abfbd39b0bb3a7bd25ee78dbbe9'),
+      ($1,'entrega','0dc492621a834e51988b6840f9e1b0f095847deaf93b7543c16429e11644dcfd'),
+      ($1,'caixa','59c7c57e6516f4a4ae85214acbd322b724cb755806c4183587a5007c9ca3af23')
+     on conflict (workspace_id, route) do nothing`,
+    [workspaceId],
+  );
+}
 async function sendPinEmail(email: string, pin: string) {
   const webhook = process.env["EMAIL_WEBHOOK_URL"];
   const subject = "Seu PIN de ativação — VendeFácil";
@@ -29,15 +40,7 @@ export const registerAccount = createServerFn({ method: "POST" }).validator((dat
     [workspace.id, data.name.trim(), data.login.trim(), hash(data.password), data.whatsapp.trim(), data.email.trim().toLowerCase(), hash(pin)],
   );
   if (!user) throw new Error("Não foi possível criar o usuário");
-  await q(
-    `insert into route_passwords (workspace_id, route, password_hash) values
-      ($1,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
-      ($1,'cozinha','50263d56d9e862db1767204ed2fc5c264cfe2abfbd39b0bb3a7bd25ee78dbbe9'),
-      ($1,'entrega','0dc492621a834e51988b6840f9e1b0f095847deaf93b7543c16429e11644dcfd'),
-      ($1,'caixa','59c7c57e6516f4a4ae85214acbd322b724cb755806c4183587a5007c9ca3af23')
-     on conflict (workspace_id, route) do nothing`,
-    [workspace.id],
-  );
+  await provisionRoutePasswords(workspace.id);
   await sendPinEmail(data.email, pin);
   return { ok: true as const };
 });
@@ -49,6 +52,7 @@ export const verifyAccount = createServerFn({ method: "POST" }).validator((data)
   );
   if (!user) throw new Error("PIN inválido ou expirado");
   await q("update app_users set verified_at=now(),verification_pin=null,pin_expires_at=null where id=$1", [user.id]);
+  await provisionRoutePasswords(user.workspace_id);
   const session = await getAppSession();
   await session.update({ userId: user.id, workspaceId: user.workspace_id, name: user.name, email: user.email });
   return { ok: true as const, name: user.name, email: user.email };
@@ -59,6 +63,7 @@ export const loginAccount = createServerFn({ method: "POST" }).validator((data) 
     "select id,name,email,workspace_id,password_hash,verified_at from app_users where lower(login)=lower($1) or lower(email)=lower($1)", [data.login.trim()]);
   if (!user || hash(data.password) !== user.password_hash) throw new Error("Login ou senha inválidos");
   if (!user.verified_at) throw new Error("Confirme seu email antes de entrar");
+  await provisionRoutePasswords(user.workspace_id);
   const session = await getAppSession();
   await session.update({ userId: user.id, workspaceId: user.workspace_id, name: user.name, email: user.email });
   return { ok: true as const, name: user.name, email: user.email };
