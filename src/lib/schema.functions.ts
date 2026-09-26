@@ -12,7 +12,7 @@ const requiredTables = [
 ];
 const requiredColumns: Record<string, string[]> = {
   orders: ["customer_id", "amount_paid", "credit_amount", "payment_status"],
-  products: ["purchase_price", "min_stock", "stock_control"],
+  products: ["purchase_price", "min_stock", "stock_control", "workspace_id"],
   cash_entries: ["voided"],
   shifts: ["workspace_id"],
   categories: ["workspace_id"],
@@ -138,6 +138,9 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     );
     await client.query(
       "alter table products add column if not exists stock_control boolean not null default true",
+    );
+    await client.query(
+      "alter table products add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
     );
     await client.query(
       "alter table orders add column if not exists workspace_id uuid references workspaces(id)",

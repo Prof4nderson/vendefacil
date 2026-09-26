@@ -3,9 +3,16 @@
 -- ou manualmente:  psql "$DATABASE_URL" -f db/schema.sql
 
 create extension if not exists pgcrypto;
+create table if not exists workspaces (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  owner_user_id uuid,
+  created_at timestamptz not null default now()
+);
 
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id) on delete cascade,
   name text not null unique,
   sort_order int not null default 0,
   active boolean not null default true,
@@ -14,6 +21,7 @@ create table if not exists categories (
 
 create table if not exists products (
   id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id) on delete cascade,
   category_id uuid not null references categories(id) on delete cascade,
   name text not null,
   description text,
