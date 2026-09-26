@@ -355,8 +355,15 @@ function PosPage() {
   const lowStock = products.filter((p) => Number(p.stock) <= Number(p.min_stock ?? 5));
 
   function add(product: Product, delta: number) {
+    const currentQty = cart[product.id] ?? 0;
+    const nextQty = Math.min(Number(product.stock), Math.max(0, currentQty + delta));
+    const actualDelta = nextQty - currentQty;
+    if (actualDelta === 0) {
+      if (delta > 0) toast.error(`Estoque insuficiente: ${product.name}`);
+      return;
+    }
     setCart((old) => {
-      const next = { ...old, [product.id]: Math.max(0, (old[product.id] ?? 0) + delta) };
+      const next = { ...old, [product.id]: nextQty };
       if (!next[product.id]) delete next[product.id];
       return next;
     });
@@ -365,8 +372,8 @@ function PosPage() {
         c.id === activeCustomer
           ? {
               ...c,
-              items: Math.max(0, c.items + delta),
-              total: Math.max(0, c.total + Number(product.price) * delta),
+              items: Math.max(0, c.items + actualDelta),
+              total: Math.max(0, c.total + Number(product.price) * actualDelta),
             }
           : c,
       ),
@@ -410,13 +417,12 @@ function PosPage() {
     }
   }
   async function openSale() {
-    if (cartItems.length) {
-      setSelectingSaleCustomer(true);
-      setCustomerNameDraft("");
-      setShowSaleCustomer(true);
+    if (!cartItems.length) {
+      setShowSaleCustomer(false);
+      toast.error("Selecione pelo menos um produto para vender");
       return;
     }
-    setSelectingSaleCustomer(false);
+    setSelectingSaleCustomer(true);
     setCustomerNameDraft("");
     setShowSaleCustomer(true);
   }
