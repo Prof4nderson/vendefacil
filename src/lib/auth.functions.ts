@@ -108,14 +108,15 @@ export const getCurrentAccount = createServerFn({ method: "GET" }).handler(async
 
 export const getUserProfile = createServerFn({ method: "GET" }).validator((data) => z.object({ email: z.string().email() }).parse(data)).handler(async ({ data }) => {
   const ctx = await getTenantContext();
-  return q1("select name,login,email,whatsapp,address,cpf_cnpj,cep,city,state from app_users where id=$1 and workspace_id=$2 and lower(email)=lower($3)", [ctx.userId, ctx.workspaceId, data.email]);
+  return q1("select u.name,u.login,u.email,u.whatsapp,u.address,u.cpf_cnpj,u.cep,u.city,u.state,w.name as establishment_name from app_users u join workspaces w on w.id=u.workspace_id where u.id=$1 and u.workspace_id=$2 and lower(u.email)=lower($3)", [ctx.userId, ctx.workspaceId, data.email]);
 });
 
 export const updateUserProfile = createServerFn({ method: "POST" }).validator((data) => z.object({
-  email: z.string().email(), name: z.string().min(2), whatsapp: z.string().min(8), address: z.string().optional(), cpf_cnpj: z.string().optional(), cep: z.string().optional(), city: z.string().optional(), state: z.string().optional(),
+  email: z.string().email(), name: z.string().min(2), establishment_name: z.string().min(2), whatsapp: z.string().min(8), address: z.string().optional(), cpf_cnpj: z.string().optional(), cep: z.string().optional(), city: z.string().optional(), state: z.string().optional(),
 }).parse(data)).handler(async ({ data }) => {
   const ctx = await getTenantContext();
   await q("update app_users set name=$1,whatsapp=$2,address=$3,cpf_cnpj=$4,cep=$5,city=$6,state=$7 where id=$8 and workspace_id=$9 and lower(email)=lower($10)", [data.name, data.whatsapp, data.address ?? null, data.cpf_cnpj ?? null, data.cep ?? null, data.city ?? null, data.state ?? null, ctx.userId, ctx.workspaceId, data.email]);
+  await q("update workspaces set name=$1 where id=$2", [data.establishment_name.trim(), ctx.workspaceId]);
   const session = await getAppSession();
   await session.update({ ...session.data, name: data.name });
   return { ok: true as const };

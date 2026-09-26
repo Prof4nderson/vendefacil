@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
-  Settings2, UtensilsCrossed, Tags, CalendarDays, Bike, KeyRound, Paintbrush, BarChart3, Lock, Plus, Pencil,
+  Settings2, UtensilsCrossed, Tags, CalendarDays, Bike, KeyRound, BarChart3, Lock, Plus, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { OpsGate, useOpsQuery } from "@/components/ops-gate";
@@ -42,12 +42,11 @@ const TABS = [
   { key: "semanal", label: "Semanal", icon: CalendarDays },
   { key: "entregadores", label: "Entregadores", icon: Bike },
   { key: "senhas", label: "Senhas", icon: KeyRound },
-  { key: "aparencia", label: "Aparência", icon: Paintbrush },
   { key: "financeiro", label: "Financeiro", icon: BarChart3 },
 ] as const;
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-const ROUTE_LABELS: Record<string, string> = { admin: "Admin", cozinha: "Cozinha", entrega: "Entrega", caixa: "Caixa" };
+const ROUTE_LABELS: Record<string, string> = { admin: "Administração", cozinha: "Cozinha", entrega: "Entrega", caixa: "Caixa" };
 
 function AdminPage() {
   const session = Route.useLoaderData();
@@ -110,7 +109,6 @@ function AdminPage() {
             {tab === "semanal" && <WeeklyTab data={data} />}
             {tab === "entregadores" && <CouriersTab data={data} />}
             {tab === "senhas" && <PasswordsTab />}
-            {tab === "aparencia" && <AppearanceTab />}
             {tab === "financeiro" && <FinanceTab />}
           </>
         )}

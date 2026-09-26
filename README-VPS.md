@@ -144,7 +144,7 @@ A tela inicial agora funciona como um **PDV de uma única tela**, preservando a 
 - cadastro com nome, login, senha, WhatsApp e email;
 - ativação por PIN de 6 dígitos com expiração de 15 minutos;
 - workspace individual por estabelecimento, pronto para operadores adicionais;
-- cards de produtos com foto/ícone, preço de compra, preço de venda, estoque atual e estoque mínimo;
+- cards de produtos com foto/ícone, valor de custo, preço de venda, estoque atual e estoque mínimo;
 - clientes consumindo com carrinho acumulado e cliente padrão **Consumidor**;
 - pagamento por dinheiro, cartão, PIX ou outros;
 - abertura automática do primeiro turno ao registrar uma venda;

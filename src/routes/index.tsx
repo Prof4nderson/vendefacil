@@ -8,6 +8,8 @@ import {
   Check,
   ChevronDown,
   CircleUserRound,
+  Bike,
+  ChefHat,
   Clock3,
   CreditCard,
   DollarSign,
@@ -28,6 +30,7 @@ import {
   UserPlus,
   Users,
   WalletCards,
+  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -283,6 +286,7 @@ function PosPage() {
   const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [profile, setProfile] = useState({
     name: "",
+    establishment_name: "",
     email: "",
     whatsapp: "",
     address: "",
@@ -809,7 +813,16 @@ function PosPage() {
                 }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
-                <LayoutDashboard className="h-4 w-4 text-primary" /> Login Admin
+                <LayoutDashboard className="h-4 w-4 text-primary" /> Administração
+              </button>
+              <button onClick={() => { window.location.href = "/cozinha"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                <ChefHat className="h-4 w-4 text-primary" /> Cozinha
+              </button>
+              <button onClick={() => { window.location.href = "/entrega"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                <Bike className="h-4 w-4 text-primary" /> Entregas
+              </button>
+              <button onClick={() => { window.location.href = "/caixa"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                <Wallet className="h-4 w-4 text-primary" /> Caixa
               </button>
               {!shiftOpen && (
                 <button
@@ -1304,7 +1317,7 @@ function PosPage() {
               }}
             >
               <Settings2 className="mx-auto h-4 w-4 text-primary" />
-              <span className="mt-1 block text-[10px] font-bold">Admin</span>
+              <span className="mt-1 block text-[10px] font-bold">Administração</span>
             </button>
           </div>
         </aside>
@@ -1346,6 +1359,12 @@ function PosPage() {
               </button>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <input
+                placeholder="Nome do estabelecimento"
+                value={profile.establishment_name}
+                onChange={(e) => setProfile({ ...profile, establishment_name: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm sm:col-span-2"
+              />
               <input
                 placeholder="Nome completo"
                 value={profile.name}
