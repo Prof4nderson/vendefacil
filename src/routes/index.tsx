@@ -36,6 +36,7 @@ import {
   cancelSale,
   finalizeOpenSale,
   getOpenCustomerSales,
+  getOpenCustomerSummaries,
   updateOpenSale,
   type SaleRow,
 } from "@/lib/sales.functions";
@@ -58,13 +59,14 @@ import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [menu, settings, suggestions, savedCustomers] = await Promise.all([
+    const [menu, settings, suggestions, savedCustomers, openCustomerSummaries] = await Promise.all([
       getMenuData(),
       getSettings(),
       getCatalogSuggestions(),
       getCustomers(),
+      getOpenCustomerSummaries(),
     ]);
-    return { menu, settings, suggestions, savedCustomers };
+    return { menu, settings, suggestions, savedCustomers, openCustomerSummaries };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -179,7 +181,8 @@ const fallbackCategories: Category[] = [
 ];
 
 function PosPage() {
-  const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
+  const { menu, settings, suggestions, savedCustomers, openCustomerSummaries } =
+    Route.useLoaderData();
   const products = (menu.products as Product[])?.length
     ? (menu.products as Product[])
     : fallbackProducts;
@@ -214,8 +217,16 @@ function PosPage() {
       id: c.id,
       name: c.name,
       note: c.phone || "Cliente cadastrado",
-      total: 0,
-      items: 0,
+      total: Number(
+        openCustomerSummaries.find(
+          (summary) => summary.customer_name.toLowerCase() === c.name.toLowerCase(),
+        )?.total ?? 0,
+      ),
+      items: Number(
+        openCustomerSummaries.find(
+          (summary) => summary.customer_name.toLowerCase() === c.name.toLowerCase(),
+        )?.items ?? 0,
+      ),
       credit: Number(c.credit_balance),
     })),
   ]);

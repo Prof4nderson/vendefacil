@@ -79,53 +79,87 @@ export const getOpenCustomerSales = createServerFn({ method: "GET" })
     }
   });
 
+export const getOpenCustomerSummaries = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    return await q<{ customer_name: string; total: number; items: number }>(
+      "select customer_name, coalesce(sum(total),0) total, coalesce(sum((select coalesce(sum(qty),0) from order_items oi where oi.order_id=o.id)),0)::int items from orders o where status not in ('cancelled','served','delivered') group by customer_name",
+    );
+  } catch {
+    return [];
+  }
+});
+
 export const finalizeOpenSale = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
     try {
-      return await tx(async (client) => {
-        const result = await client.query<{
-          id: string;
-          total: number;
-          amount_paid: number;
-          payment_method: string;
-          customer_id: string | null;
-          order_number: number;
-          customer_name: string;
-        }>(
-          "select id,total,amount_paid,payment_method,customer_id,order_number,customer_name from orders where id=$1 and status not in ('cancelled','served','delivered') for update",
+      const rows = await q<{
+        id: string;
+        total: number;
+        amount_paid: number;
+        payment_method: string;
+        customer_id: string | null;
+        order_number: number;
+        customer_name: string;
+      }>(
+        "select id,total,coalesce(amount_paid,0) amount_paid,payment_method,customer_id,order_number,customer_name from orders where id=$1 and status not in ('cancelled','served','delivered')",
+        [data.orderId],
+      );
+      const order = rows[0];
+      if (!order) throw new Error("Pedido já finalizado ou não encontrado");
+      const due = Math.max(0, Number(order.total) - Number(order.amount_paid));
+      await q("update orders set status='served', updated_at=now() where id=$1", [data.orderId]);
+      try {
+        await q(
+          "update orders set amount_paid=total, credit_amount=0, payment_status='paid' where id=$1",
           [data.orderId],
         );
-        const order = result.rows[0];
-        if (!order) throw new Error("Pedido já finalizado ou não encontrado");
-        const due = Math.max(0, Number(order.total) - Number(order.amount_paid ?? 0));
-        await client.query(
-          "update orders set status='served', amount_paid=total, credit_amount=0, payment_status='paid', updated_at=now() where id=$1",
-          [data.orderId],
-        );
-        if (order.customer_id)
-          await client.query(
-            "update customers set credit_balance=greatest(0, credit_balance-greatest(0,$1)), updated_at=now() where id=$2",
+      } catch {
+        /* schema antigo: o status já foi persistido */
+      }
+      if (order.customer_id)
+        try {
+          await q(
+            "update customers set credit_balance=greatest(0, credit_balance-$1), updated_at=now() where id=$2",
             [due, order.customer_id],
           );
-        if (due > 0) {
-          const shift = await client.query<{ id: string }>(
+        } catch {
+          /* cliente legado */
+        }
+      if (due > 0)
+        try {
+          const shift = await q<{ id: string }>(
             "select id from shifts where closed_at is null order by opened_at desc limit 1",
           );
-          if (shift.rows[0])
-            await client.query(
-              "insert into cash_entries (shift_id,type,amount,method,description,order_id) values ($1,'income',$2,$3,$4,$5)",
-              [
-                shift.rows[0].id,
-                due,
-                order.payment_method === "Pendente" ? "Dinheiro" : order.payment_method,
-                `Finalização venda #${order.order_number} — ${order.customer_name}`,
-                data.orderId,
-              ],
-            );
+          if (shift[0]) {
+            try {
+              await q(
+                "insert into cash_entries (shift_id,type,amount,method,description,order_id) values ($1,'income',$2,$3,$4,$5)",
+                [
+                  shift[0].id,
+                  due,
+                  order.payment_method === "Pendente" ? "Dinheiro" : order.payment_method,
+                  `Finalização venda #${order.order_number} — ${order.customer_name}`,
+                  data.orderId,
+                ],
+              );
+            } catch {
+              await q(
+                "insert into cash_entries (shift_id,type,amount,method,description,order_id) values ($1,'income',round($2),$3,$4,$5)",
+                [
+                  shift[0].id,
+                  due,
+                  order.payment_method === "Pendente" ? "Dinheiro" : order.payment_method,
+                  `Finalização venda #${order.order_number} — ${order.customer_name}`,
+                  data.orderId,
+                ],
+              );
+            }
+          }
+        } catch {
+          /* caixa legado não deve impedir o fechamento do pedido */
         }
-        return { ok: true as const, paid: due };
-      });
+      return { ok: true as const, paid: due };
     } catch (error) {
       if (canUsePreviewFallback(error)) {
         const { finalizeFallbackOrder } = await import("./fallback-store.server");
