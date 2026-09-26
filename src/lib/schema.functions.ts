@@ -103,6 +103,33 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
       ('Outros','Molho extra da casa','Molho especial 50ml',1.10,2.50,'🥣'),
       ('Outros','Embalagem para viagem','Marmita térmica descartável',1.35,3.00,'📦')
       on conflict (category_name,name) do nothing`);
+    await client.query(`insert into catalog_suggestions (category_name,name,description,suggested_price,icon) values
+      ('Bebidas','Refrigerante Coca-Cola 350ml','Lata de Coca-Cola sabor original 350ml',5.50,'🥤'),
+      ('Bebidas','Refrigerante Guaraná Antarctica 350ml','Lata de Guaraná Antarctica 350ml',4.80,'🥤'),
+      ('Bebidas','Refrigerante Coca-Cola Zero 350ml','Lata de Coca-Cola Zero Açúcar 350ml',5.50,'🥤'),
+      ('Bebidas','Suco Del Valle Laranja 1L','Suco pronto para beber sabor laranja 1 Litro',8.90,'🧃'),
+      ('Bebidas','Água Mineral Sem Gás 500ml','Garrafa de água mineral sem gás 500ml',2.50,'💧'),
+      ('Bebidas','Água Mineral Com Gás 500ml','Garrafa de água mineral com gás 500ml',3.00,'💧'),
+      ('Bebidas','Isotônico Red Bull 250ml','Energético Red Bull Energy Drink 250ml',11.90,'🥤'),
+      ('Cervejas','Cerveja Heineken Long Neck 330ml','Garrafa Heineken Premium Pilsen 330ml',8.50,'🍺'),
+      ('Cervejas','Cerveja Amstel Lata 350ml','Cerveja Lager Amstel lata 350ml',4.20,'🍺'),
+      ('Cervejas','Cerveja Brahma Duplo Malte 350ml','Cerveja Brahma Duplo Malte lata 350ml',4.50,'🍺'),
+      ('Cervejas','Cerveja Budweiser 330ml Long Neck','Cerveja Budweiser American Lager 330ml',7.90,'🍺'),
+      ('Cervejas','Cerveja Stella Artois 330ml','Cerveja Premium Lager Stella Artois 330ml',8.20,'🍺'),
+      ('Salgadinhos','Salgadinho Doritos Queijo Nacho 84g','Salgadinho de milho sabor queijo nacho 84g',8.90,'🍿'),
+      ('Salgadinhos','Salgadinho Cheetos Lua Queijo 57g','Salgadinho Cheetos sabor queijo 57g',4.90,'🍿'),
+      ('Salgadinhos','Batata Ruffles Original 76g','Batata frita ondulada Ruffles sabor sal 76g',8.50,'🍿'),
+      ('Salgadinhos','Amendoim Japones Pettiz 120g','Amendoim tipo japonês crocante 120g',5.90,'🥜'),
+      ('Biscoitos','Biscoito Oreo Recheado 90g','Biscoito de chocolate com recheio de baunilha 90g',4.50,'🍪'),
+      ('Biscoitos','Biscoito Club Social Original 141g','Biscoito salgado pacote com 6 unidades',6.20,'🍪'),
+      ('Biscoitos','Biscoito Passatempo Recheado Chocolate 130g','Biscoito recheado sabor chocolate 130g',3.90,'🍪'),
+      ('Biscoitos','Chocolate Bis Ao Leite 126g','Wafer coberto com chocolate ao leite Bis',7.50,'🍫'),
+      ('Biscoitos','Chocolate KitKat Milk 41,5g','Chocolate ao leite com wafer KitKat',4.20,'🍫'),
+      ('Alimentos','Pão de Forma Tradicional Wickbold 500g','Pão de forma fatiado tradicional 500g',9.50,'🍞'),
+      ('Alimentos','Leite Integral Piracanjuba 1L','Leite UHT integral caixa de 1 Litro',5.80,'🥛'),
+      ('Alimentos','Café Torrado e Moído Pilão 500g','Café tradicional torrado e moído a vácuo 500g',18.90,'☕'),
+      ('Alimentos','Açúcar Refinado União 1kg','Açúcar refinado especial pacote de 1kg',4.90,'🧂')
+      on conflict (category_name,name) do nothing`);
     await client.query(
       "alter table products add column if not exists purchase_price numeric(10,2) not null default 0",
     );
