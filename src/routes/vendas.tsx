@@ -29,6 +29,7 @@ function SalesPage() {
   const [passwordSale, setPasswordSale] = useState<SaleRow | null>(null);
   const [password, setPassword] = useState("");
   const [filter, setFilter] = useState<"all" | "open" | "done" | "cancelled">("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const visible = sales.filter(
     (s) =>
       filter === "all" ||
@@ -105,9 +106,13 @@ function SalesPage() {
               className={`glass-card rounded-2xl p-4 ${sale.status === "cancelled" ? "opacity-75" : ""}`}
             >
               <div className="flex flex-wrap items-start gap-3">
-                <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
+                <button
+                  onClick={() => setExpandedId(expandedId === sale.id ? null : sale.id)}
+                  title="Mostrar produtos da venda"
+                  className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary hover:bg-primary/20"
+                >
                   <WalletCards className="h-5 w-5" />
-                </div>
+                </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-display text-lg font-bold">Venda #{sale.order_number}</h2>
@@ -130,6 +135,26 @@ function SalesPage() {
                   </p>
                 </div>
               </div>
+              {expandedId === sale.id && (
+                <div className="mt-3 rounded-xl bg-secondary/60 p-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Produtos do pedido
+                  </p>
+                  <div className="space-y-2">
+                    {sale.items.map((item, index) => (
+                      <div
+                        key={`${item.name}-${index}`}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span>
+                          <b>{item.qty}×</b> {item.name}
+                        </span>
+                        <span className="font-bold">{brl(Number(item.price) * item.qty)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                 <div className="flex gap-3 text-xs text-muted-foreground">
                   <span>

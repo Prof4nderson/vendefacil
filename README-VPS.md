@@ -217,3 +217,14 @@ Para bancos já existentes, aplique também:
 docker compose exec -T postgres psql -U delivery -d delivery < db/migrations/20260926_sales_admin.sql
 docker compose up -d --build --force-recreate app
 ```
+
+## 10. Correção do banco e personalização
+
+A migração `db/migrations/20260926_sales_admin.sql` agora é consolidada e inclui `customers`, `orders.customer_id`, `amount_paid`, `credit_amount`, `payment_status` e `cash_entries.voided`. Ela pode ser executada com segurança em banco existente:
+
+```bash
+docker compose exec -T postgres psql -U delivery -d delivery < db/migrations/20260926_sales_admin.sql
+docker compose up -d --build --force-recreate app
+```
+
+O menu do PDV inclui **Fechar turno** e **Personalizar**. As preferências de tamanho da fonte e cor principal ficam salvas no navegador do usuário.

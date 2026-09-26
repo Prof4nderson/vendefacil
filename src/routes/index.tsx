@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   BadgeAlert,
   BarChart3,
@@ -229,6 +229,21 @@ function PosPage() {
   const [creditAmount, setCreditAmount] = useState(0);
   const [showSaleCustomer, setShowSaleCustomer] = useState(false);
   const [customerNameDraft, setCustomerNameDraft] = useState("");
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [fontScale, setFontScale] = useState(() =>
+    typeof window !== "undefined"
+      ? Number(window.localStorage.getItem("vendefacil-font-scale") || 100)
+      : 100,
+  );
+  const [primaryColor, setPrimaryColor] = useState(() =>
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("vendefacil-primary-color") || "#00d5ff"
+      : "#00d5ff",
+  );
+  useEffect(() => {
+    localStorage.setItem("vendefacil-font-scale", String(fontScale));
+    localStorage.setItem("vendefacil-primary-color", primaryColor);
+  }, [fontScale, primaryColor]);
 
   const visible = useMemo(
     () =>
@@ -390,14 +405,16 @@ function PosPage() {
   }
 
   return (
-    <div className="min-h-screen pb-8">
+    <div
+      className="min-h-screen pb-8"
+      style={{ fontSize: `${fontScale}%`, "--primary": primaryColor } as CSSProperties}
+    >
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-8">
         <div className="relative mx-auto flex max-w-[1500px] items-center gap-4">
           <div className="icon-tile grid h-11 w-11 shrink-0 place-items-center rounded-2xl">
             <Store className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="eyebrow">PDV • operação simples</p>
             <h1 className="font-display truncate text-lg font-bold">
               {settings.restaurant_name || "VendeFácil"}
             </h1>
@@ -446,6 +463,16 @@ function PosPage() {
                   <DollarSign className="h-4 w-4 text-primary" /> Abrir turno
                 </button>
               )}
+              {shiftOpen && (
+                <button
+                  onClick={() => {
+                    window.location.href = "/caixa";
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                >
+                  <Clock3 className="h-4 w-4 text-primary" /> Fechar turno
+                </button>
+              )}
               <button
                 onClick={() => {
                   setShowCatalog(true);
@@ -462,6 +489,15 @@ function PosPage() {
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
                 <WalletCards className="h-4 w-4 text-primary" /> Ver vendas
+              </button>
+              <button
+                onClick={() => {
+                  setShowCustomize(true);
+                  setShowMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <Settings2 className="h-4 w-4 text-primary" /> Personalizar
               </button>
               <button
                 onClick={() => {
@@ -499,18 +535,20 @@ function PosPage() {
             >
               <CreditCard className="mr-1 h-4 w-4" /> Finalizar
             </Button>
+            <Button
+              variant="outline"
+              onClick={openSale}
+              className="shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold"
+            >
+              <ShoppingCart className="mr-1 h-4 w-4" /> Vender
+            </Button>
           </div>
         </div>
       )}
       <main className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="eyebrow">Venda rápida</p>
-              <h2 className="font-display text-3xl font-extrabold tracking-tight">
-                O que vamos vender?
-              </h2>
-            </div>
+            <div></div>
             <div className="flex gap-2">
               <Button className="neon-button rounded-xl" onClick={openSale}>
                 <ShoppingCart className="mr-2 h-4 w-4" /> Vender
@@ -757,6 +795,61 @@ function PosPage() {
           </div>
         </aside>
       </main>
+      {showCustomize && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowCustomize(false)}
+        >
+          <div
+            className="glass-card w-full max-w-md rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Preferências</p>
+                <h2 className="font-display text-2xl font-bold">Personalizar</h2>
+              </div>
+              <button onClick={() => setShowCustomize(false)}>
+                <X />
+              </button>
+            </div>
+            <label className="mt-5 block text-sm font-bold">
+              Tamanho das fontes <span className="text-primary">{fontScale}%</span>
+            </label>
+            <input
+              type="range"
+              min="85"
+              max="125"
+              step="5"
+              value={fontScale}
+              onChange={(e) => setFontScale(Number(e.target.value))}
+              className="mt-3 w-full accent-primary"
+            />
+            <div className="mt-5">
+              <label className="text-sm font-bold">Cor principal</label>
+              <div className="mt-3 flex items-center gap-3">
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  className="h-12 w-16 cursor-pointer rounded-lg border-0 bg-transparent"
+                />
+                <input
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  className="h-11 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm"
+                />
+              </div>
+            </div>
+            <Button
+              onClick={() => setShowCustomize(false)}
+              className="neon-button mt-6 h-11 w-full rounded-xl"
+            >
+              Salvar preferências
+            </Button>
+          </div>
+        </div>
+      )}
       {showSaleCustomer && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"

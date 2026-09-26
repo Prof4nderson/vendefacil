@@ -15,13 +15,15 @@ export type SaleRow = {
   status: string;
   created_at: string;
   items_count: number;
+  items: { name: string; qty: number; price: number | string }[];
 };
 
 export const getSales = createServerFn({ method: "GET" }).handler(async () => {
   return q<SaleRow>(
     `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
             o.payment_status, o.payment_method, o.status, o.created_at,
-            coalesce(sum(i.qty), 0)::int as items_count
+            coalesce(sum(i.qty), 0)::int as items_count,
+            coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
      from orders o left join order_items i on i.order_id=o.id
      group by o.id order by o.created_at desc limit 200`,
   );
