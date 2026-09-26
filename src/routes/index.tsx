@@ -277,6 +277,8 @@ function PosPage() {
   const total = cartItems.reduce((sum, item) => sum + Number(item.product.price) * item.qty, 0);
   const count = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const currentCustomer = customers.find((c) => c.id === activeCustomer)!;
+  const openOrdersTotal = openCustomerSales.reduce((sum, sale) => sum + Number(sale.total), 0);
+  const totalDue = total + openOrdersTotal + Number(currentCustomer.credit);
   const lowStock = products.filter((p) => Number(p.stock) <= Number(p.min_stock ?? 5));
 
   function add(product: Product, delta: number) {
@@ -319,6 +321,7 @@ function PosPage() {
     setActiveCustomer(customer.id);
     setCart({});
     setShowSaleCustomer(false);
+    void inspectCustomer(customer);
   }
   function addNamedCustomer() {
     const name = customerNameDraft.trim();
@@ -331,6 +334,7 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
     setShowSaleCustomer(false);
+    void inspectCustomer({ id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 });
   }
   async function inspectCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
@@ -410,7 +414,8 @@ function PosPage() {
     }
   }
   async function checkout() {
-    if (!cartItems.length) return toast.error("Adicione pelo menos um produto");
+    if (!cartItems.length && !openCustomerSales.length && !currentCustomer.credit)
+      return toast.error("Adicione produtos ou selecione um consumo em aberto");
     setOpening(true);
     try {
       try {
@@ -421,24 +426,29 @@ function PosPage() {
       setShiftOpen(true);
       localStorage.setItem("vendefacil-shift-open", "1");
       if (
+        cartItems.length &&
         cartItems.every((i) => i.product.id.includes("-")) &&
         cartItems.some((i) => i.product.id.startsWith("demo-"))
       ) {
         toast.success(`Venda ${currentCustomer.name} finalizada • ${brl(total)}`);
-      } else {
+      } else if (cartItems.length) {
+        const newCredit = openCustomerSales.length ? 0 : creditAmount;
         await submitOrder({
           data: {
             customer_name: currentCustomer.name,
             customer_phone: "000000000",
             order_type: "dine_in",
             payment_method: payment,
-            amount_paid: Math.max(0, total - creditAmount),
-            credit_amount: creditAmount,
+            amount_paid: Math.max(0, total - newCredit),
+            credit_amount: newCredit,
             items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
           },
         });
         toast.success(`Venda registrada • ${brl(total)}`);
       }
+      for (const sale of openCustomerSales) await finalizeSale({ data: { orderId: sale.id } });
+      if (openCustomerSales.length)
+        toast.success(`Consumo de ${currentCustomer.name} finalizado • ${brl(totalDue)}`);
       setCustomers((old) =>
         old
           .filter((c) => c.id !== activeCustomer || c.id === "consumer")
@@ -447,6 +457,7 @@ function PosPage() {
       setCart({});
       setShowPayment(false);
       setCreditAmount(0);
+      setOpenCustomerSales([]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar a venda");
     } finally {
@@ -591,7 +602,7 @@ function PosPage() {
           )}
         </div>
       </header>
-      {count > 0 && (
+      {(count > 0 || openCustomerSales.length > 0 || currentCustomer.credit > 0) && (
         <div className="sticky top-[68px] z-10 border-b border-primary/20 bg-background/95 px-4 py-2 backdrop-blur-xl md:px-8">
           <div className="mx-auto flex max-w-[1500px] items-center gap-3">
             <ShoppingCart className="h-4 w-4 shrink-0 text-primary" />
@@ -606,13 +617,13 @@ function PosPage() {
                 </button>
               ))}
             </div>
-            <span className="shrink-0 text-sm font-black text-primary">{brl(total)}</span>
+            <span className="shrink-0 text-sm font-black text-primary">{brl(totalDue)}</span>
             <Button
               disabled={opening}
               onClick={() => setShowPayment(true)}
               className="neon-button shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold"
             >
-              <CreditCard className="mr-1 h-4 w-4" /> Finalizar
+              <CreditCard className="mr-1 h-4 w-4" /> Finalizar consumo
             </Button>
             <Button
               variant="outline"
@@ -890,6 +901,14 @@ function PosPage() {
                     )}
                   </b>
                 </div>
+              )}
+              {(openCustomerSales.length > 0 || currentCustomer.credit > 0) && (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  className="neon-button mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black"
+                >
+                  <CreditCard className="h-4 w-4" /> Finalizar consumo · {brl(totalDue)}
+                </button>
               )}
             </div>
             <button
@@ -1226,17 +1245,17 @@ function PosPage() {
                 <input
                   type="number"
                   min="0"
-                  max={total}
+                  max={totalDue}
                   step="0.01"
                   value={creditAmount || ""}
                   onChange={(e) =>
-                    setCreditAmount(Math.min(total, Math.max(0, Number(e.target.value) || 0)))
+                    setCreditAmount(Math.min(totalDue, Math.max(0, Number(e.target.value) || 0)))
                   }
                   placeholder="0,00"
                   className="h-10 flex-1 rounded-lg border border-amber-400/30 bg-background px-3 text-sm"
                 />
                 <button
-                  onClick={() => setCreditAmount(total)}
+                  onClick={() => setCreditAmount(totalDue)}
                   className="rounded-lg bg-amber-300/20 px-2 py-2 text-xs font-bold text-amber-200"
                 >
                   Tudo
@@ -1244,13 +1263,14 @@ function PosPage() {
               </div>
               {creditAmount > 0 && (
                 <p className="mt-2 text-xs text-amber-200">
-                  Paga agora {brl(total - creditAmount)} • fica devendo {brl(creditAmount)}
+                  Paga agora {brl(Math.max(0, totalDue - creditAmount))} • fica devendo{" "}
+                  {brl(creditAmount)}
                 </p>
               )}
             </div>
             <div className="mt-5 flex items-center justify-between rounded-xl bg-secondary/60 p-4">
               <span className="font-semibold">Total</span>
-              <strong className="font-display text-2xl text-primary">{brl(total)}</strong>
+              <strong className="font-display text-2xl text-primary">{brl(totalDue)}</strong>
             </div>
             <Button
               onClick={checkout}
@@ -1261,7 +1281,7 @@ function PosPage() {
                 "Registrando..."
               ) : (
                 <>
-                  <Check className="mr-2 h-5 w-5" /> Confirmar pagamento
+                  <Check className="mr-2 h-5 w-5" /> Finalizar consumo
                 </>
               )}
             </Button>
