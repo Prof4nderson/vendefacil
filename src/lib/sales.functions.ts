@@ -72,7 +72,8 @@ export const getOpenCustomerSales = createServerFn({ method: "GET" })
           [data.customerName.trim()],
         );
       } catch {
-        return [];
+        const { getFallbackOpenOrders } = await import("./fallback-store.server");
+        return getFallbackOpenOrders(data.customerName) as SaleRow[];
       }
     }
   });
@@ -80,12 +81,57 @@ export const getOpenCustomerSales = createServerFn({ method: "GET" })
 export const finalizeOpenSale = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
-    const rows = await q<{ id: string }>(
-      "update orders set status='served', updated_at=now() where id=$1 and status not in ('cancelled','served','delivered') returning id",
-      [data.orderId],
-    );
-    if (!rows.length) throw new Error("Pedido já finalizado ou não encontrado");
-    return { ok: true as const };
+    try {
+      return await tx(async (client) => {
+        const result = await client.query<{
+          id: string;
+          total: number;
+          amount_paid: number;
+          payment_method: string;
+          customer_id: string | null;
+          order_number: number;
+          customer_name: string;
+        }>(
+          "select id,total,amount_paid,payment_method,customer_id,order_number,customer_name from orders where id=$1 and status not in ('cancelled','served','delivered') for update",
+          [data.orderId],
+        );
+        const order = result.rows[0];
+        if (!order) throw new Error("Pedido já finalizado ou não encontrado");
+        const due = Math.max(0, Number(order.total) - Number(order.amount_paid ?? 0));
+        await client.query(
+          "update orders set status='served', amount_paid=total, credit_amount=0, payment_status='paid', updated_at=now() where id=$1",
+          [data.orderId],
+        );
+        if (order.customer_id)
+          await client.query(
+            "update customers set credit_balance=greatest(0, credit_balance-greatest(0,$1)), updated_at=now() where id=$2",
+            [due, order.customer_id],
+          );
+        if (due > 0) {
+          const shift = await client.query<{ id: string }>(
+            "select id from shifts where closed_at is null order by opened_at desc limit 1",
+          );
+          if (shift.rows[0])
+            await client.query(
+              "insert into cash_entries (shift_id,type,amount,method,description,order_id) values ($1,'income',$2,$3,$4,$5)",
+              [
+                shift.rows[0].id,
+                due,
+                order.payment_method === "Pendente" ? "Dinheiro" : order.payment_method,
+                `Finalização venda #${order.order_number} — ${order.customer_name}`,
+                data.orderId,
+              ],
+            );
+        }
+        return { ok: true as const, paid: due };
+      });
+    } catch (error) {
+      if (error instanceof Error && !error.message.includes("Pedido já finalizado")) {
+        const { finalizeFallbackOrder } = await import("./fallback-store.server");
+        return finalizeFallbackOrder(data.orderId);
+      }
+      throw error;
+    }
   });
 
 export const updateOpenSale = createServerFn({ method: "POST" })

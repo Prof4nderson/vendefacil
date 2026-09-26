@@ -10,6 +10,7 @@ const orderInput = z.object({
   notes: z.string().optional(),
   amount_paid: z.number().min(0).optional(),
   credit_amount: z.number().min(0).optional(),
+  save_open: z.boolean().optional(),
   items: z
     .array(
       z.object({
@@ -64,8 +65,10 @@ export const createOrder = createServerFn({ method: "POST" })
           return sum + Number(product?.price ?? 0) * item.qty;
         }, 0);
 
-        const amountPaid = Math.min(total, Math.max(0, data.amount_paid ?? total));
-        const creditAmount = Math.max(0, total - amountPaid);
+        const amountPaid = data.save_open
+          ? 0
+          : Math.min(total, Math.max(0, data.amount_paid ?? total));
+        const creditAmount = data.save_open ? total : Math.max(0, total - amountPaid);
         const paymentStatus = creditAmount === 0 ? "paid" : amountPaid === 0 ? "credit" : "partial";
         let customerId: string | null = null;
         if (data.customer_name.trim().toLowerCase() !== "consumidor") {
@@ -106,7 +109,7 @@ export const createOrder = createServerFn({ method: "POST" })
         const order = orderRows[0];
         if (!order) throw new Error("Pedido não foi criado");
 
-        if (customerId && creditAmount > 0) {
+        if (customerId && creditAmount > 0 && !data.save_open) {
           await client.query(
             "update customers set credit_balance = credit_balance + $1, updated_at=now() where id=$2",
             [creditAmount, customerId],

@@ -324,7 +324,30 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
   }
-  function openSale() {
+  async function openSale() {
+    if (cartItems.length) {
+      setOpening(true);
+      try {
+        await submitOrder({
+          data: {
+            customer_name: currentCustomer.name,
+            customer_phone: "000000000",
+            order_type: "dine_in",
+            payment_method: "Pendente",
+            save_open: true,
+            items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
+          },
+        });
+        setCart({});
+        toast.success(`Pedido de ${currentCustomer.name} salvo em aberto`);
+        await inspectCustomer(currentCustomer);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Não foi possível salvar o pedido");
+      } finally {
+        setOpening(false);
+      }
+      return;
+    }
     setCustomerNameDraft("");
     setShowSaleCustomer(true);
   }

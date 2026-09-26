@@ -179,6 +179,48 @@ export function getFallbackOrder(id: string) {
   return { order, items };
 }
 
+export function getFallbackOpenOrders(customerName: string) {
+  const fallbackStore = store();
+  return fallbackStore.orders
+    .filter(
+      (order) =>
+        order.customer_name.toLowerCase() === customerName.trim().toLowerCase() &&
+        !["cancelled", "served", "delivered"].includes(order.status),
+    )
+    .map((order) => ({
+      id: order.id,
+      order_number: order.order_number,
+      customer_name: order.customer_name,
+      total: order.total,
+      amount_paid: 0,
+      credit_amount: order.total,
+      payment_status: "credit",
+      payment_method: order.payment_method,
+      status: order.status,
+      created_at: order.created_at,
+      items_count: fallbackStore.items
+        .filter((item) => item.order_id === order.id)
+        .reduce((sum, item) => sum + item.qty, 0),
+      items: fallbackStore.items
+        .filter((item) => item.order_id === order.id)
+        .map((item) => ({
+          product_id: item.product_id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price,
+        })),
+    }));
+}
+
+export function finalizeFallbackOrder(id: string) {
+  const order = store().orders.find((item) => item.id === id);
+  if (!order || ["cancelled", "served", "delivered"].includes(order.status))
+    throw new Error("Pedido já finalizado ou não encontrado");
+  order.status = "served";
+  order.updated_at = new Date().toISOString();
+  return { ok: true as const, paid: order.total };
+}
+
 /** Senhas padrão usadas apenas no preview (sem banco configurado). */
 export const fallbackRoutePasswords: Record<string, string> = {
   admin: "admin123",
