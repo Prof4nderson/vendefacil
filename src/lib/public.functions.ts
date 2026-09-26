@@ -58,7 +58,7 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
   const map: Record<string, unknown> = {};
   for (const row of rows) map[row.key] = row.value;
   return {
-    restaurant_name: (map["restaurant_name"] as string) ?? "Sabor da Casa",
+    restaurant_name: (map["restaurant_name"] as string) ?? "VendeFácil",
     primary_color:
       ((map["primary_color"] as string) === "#c2410c"
         ? "#00d5ff"

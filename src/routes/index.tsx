@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   BadgeAlert,
+  ArrowUp,
   BarChart3,
   Check,
   ChevronDown,
@@ -23,7 +24,7 @@ import {
   ShoppingCart,
   Smartphone,
   Sparkles,
-  Store,
+  House,
   UserPlus,
   Users,
   WalletCards,
@@ -706,6 +707,7 @@ function PosPage() {
     localStorage.removeItem("vendefacil-email");
     setAuthenticated("");
     setShowMenu(false);
+    setShowAuth("login");
     toast.success("Sessão encerrada");
   }
 
@@ -716,9 +718,13 @@ function PosPage() {
     >
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-8">
         <div className="relative mx-auto flex max-w-[1500px] items-center gap-4">
-          <div className="icon-tile grid h-11 w-11 shrink-0 place-items-center rounded-2xl">
-            <Store className="h-5 w-5 text-primary" />
-          </div>
+          <button
+            onClick={() => setShowMenu((v) => !v)}
+            aria-label="Abrir menu"
+            className="icon-tile grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
+          >
+            <House className="h-5 w-5 text-primary" />
+          </button>
           <div className="min-w-0">
             <h1 className="font-display truncate text-lg font-bold">
               {settings.restaurant_name || "VendeFácil"}
@@ -751,23 +757,15 @@ function PosPage() {
           >
             <CircleUserRound className="h-5 w-5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowMenu((v) => !v)}
-            aria-label="Menu"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
           {showMenu && (
-            <div className="absolute right-0 top-14 z-30 w-64 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
+            <div className="absolute left-0 top-14 z-30 w-64 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
               <button
                 onClick={() => {
                   window.location.href = "/admin";
                 }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
-                <LayoutDashboard className="h-4 w-4 text-primary" /> Acesso Admin
+                <LayoutDashboard className="h-4 w-4 text-primary" /> Login Admin
               </button>
               {!shiftOpen && (
                 <button
@@ -881,7 +879,7 @@ function PosPage() {
         </div>
       )}
       <main className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-8 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="min-w-0">
+        <section id="produtos" className="scroll-mt-24 min-w-0">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div></div>
             <div className="flex gap-2">
@@ -962,10 +960,10 @@ function PosPage() {
               return (
                 <article
                   key={p.id}
-                  className={`glass-card rounded-2xl p-2 transition-transform hover:-translate-y-0.5 ${productView === "cards" ? "flex min-h-[205px] flex-col" : "flex items-center gap-3"}`}
+                  className={`glass-card rounded-2xl p-2 transition-transform hover:-translate-y-0.5 ${productView === "cards" ? "flex min-h-[165px] flex-col" : "flex items-center gap-2"}`}
                 >
                   <div
-                    className={`relative overflow-hidden rounded-xl bg-secondary ${productView === "cards" ? "aspect-[1.5]" : "h-16 w-16 shrink-0"}`}
+                    className={`relative overflow-hidden rounded-xl bg-secondary ${productView === "cards" ? "aspect-[1.8]" : "h-12 w-12 shrink-0"}`}
                   >
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
@@ -982,13 +980,13 @@ function PosPage() {
                   </div>
                   <div className="flex flex-1 flex-col pt-2">
                     <h3 className="line-clamp-2 text-sm font-extrabold leading-tight">{p.name}</h3>
-                    <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
                       {p.description}
                     </p>
-                    <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+                    <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
                       <div>
-                        <p className="text-lg font-black text-primary">{brl(p.price)}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-base font-black text-primary">{brl(p.price)}</p>
+                        <p className="text-[9px] text-muted-foreground">
                           Compra {brl(p.purchase_price ?? Number(p.price) * 0.45)} • Estoque{" "}
                           {p.stock} • mín. {p.min_stock ?? 5}
                         </p>
@@ -1040,7 +1038,7 @@ function PosPage() {
             </div>
             <div className="space-y-2">
               {customers
-                .filter((c) => c.id === "consumer" || c.items > 0 || c.total > 0 || c.credit > 0)
+                .filter((c) => c.items > 0 || c.total > 0 || c.credit > 0)
                 .map((c) => (
                   <button
                     key={c.id}
@@ -1243,21 +1241,29 @@ function PosPage() {
           <div className="grid grid-cols-3 gap-2">
             <button
               className="glass-card rounded-xl p-3 text-center"
-              onClick={() => toast.info("Relatórios disponíveis após fechar o turno")}
+              onClick={() => {
+                window.location.href = "/caixa";
+              }}
             >
               <BarChart3 className="mx-auto h-4 w-4 text-primary" />
               <span className="mt-1 block text-[10px] font-bold">Relatórios</span>
             </button>
             <button
               className="glass-card rounded-xl p-3 text-center"
-              onClick={() => toast.info("Estoque opcional ativado para esta operação")}
+              onClick={() =>
+                document
+                  .getElementById("produtos")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
             >
               <Package className="mx-auto h-4 w-4 text-primary" />
               <span className="mt-1 block text-[10px] font-bold">Estoque</span>
             </button>
             <button
               className="glass-card rounded-xl p-3 text-center"
-              onClick={() => toast.info("Acesse /admin para configurar")}
+              onClick={() => {
+                window.location.href = "/admin?login=1";
+              }}
             >
               <Settings2 className="mx-auto h-4 w-4 text-primary" />
               <span className="mt-1 block text-[10px] font-bold">Admin</span>
@@ -1266,15 +1272,13 @@ function PosPage() {
         </aside>
       </main>
       <button
-        onClick={openSale}
-        disabled={opening}
-        className="neon-button fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black shadow-2xl"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        aria-label="Voltar ao topo"
+        className="fixed bottom-5 left-5 z-30 grid h-12 w-12 place-items-center rounded-full border border-primary/40 bg-background/90 text-primary shadow-2xl backdrop-blur"
       >
-        <ShoppingCart className="h-5 w-5" /> Vender
-        {count > 0 && (
-          <span className="rounded-full bg-background/30 px-2 py-0.5 text-xs">{count}</span>
-        )}
+        <ArrowUp className="h-5 w-5" />
       </button>
+      <DeveloperBadge />
       {showProfile && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"
@@ -1930,5 +1934,23 @@ function PosPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function DeveloperBadge() {
+  return (
+    <footer className="w-full border-t border-slate-800/80 bg-slate-900/90 px-6 py-4 text-center backdrop-blur-md">
+      <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-slate-950/80 px-4 py-2 text-xs font-medium shadow-xl shadow-purple-950/20">
+        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-gradient-to-r from-purple-400 to-pink-500" />
+        <a
+          href="https://professor-anderson.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-gradient-to-r from-purple-300 via-pink-300 to-blue-300 bg-clip-text font-bold text-transparent transition-opacity hover:opacity-80"
+        >
+          Desenvolvido por: Prof. Anderson - Labs Software Engineering - 2026
+        </a>
+      </div>
+    </footer>
   );
 }

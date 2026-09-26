@@ -107,7 +107,7 @@ export function getFallbackMenu(weekday: number) {
 
 export function getFallbackSettings() {
   return {
-    restaurant_name: "Sabor da Casa",
+    restaurant_name: "VendeFácil",
     primary_color: "#00d5ff",
     logo_url: null as string | null,
   };
