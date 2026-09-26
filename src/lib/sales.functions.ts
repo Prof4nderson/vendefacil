@@ -131,6 +131,46 @@ export const finalizeOpenSale = createServerFn({ method: "POST" })
         const { finalizeFallbackOrder } = await import("./fallback-store.server");
         return finalizeFallbackOrder(data.orderId);
       }
+      if (
+        error instanceof Error &&
+        /(column|relation).*does not exist|invalid input syntax/i.test(error.message)
+      ) {
+        const legacy = await tx(async (client) => {
+          const result = await client.query<{
+            id: string;
+            total: number;
+            amount_paid?: number;
+            payment_method: string;
+            order_number: number;
+            customer_name: string;
+          }>(
+            "select id,total,payment_method,order_number,customer_name from orders where id=$1 and status not in ('cancelled','served','delivered') for update",
+            [data.orderId],
+          );
+          const order = result.rows[0];
+          if (!order) throw new Error("Pedido já finalizado ou não encontrado");
+          const due = Number(order.total);
+          await client.query("update orders set status='served', updated_at=now() where id=$1", [
+            data.orderId,
+          ]);
+          const shift = await client.query<{ id: string }>(
+            "select id from shifts where closed_at is null order by opened_at desc limit 1",
+          );
+          if (shift.rows[0])
+            await client.query(
+              "insert into cash_entries (shift_id,type,amount,method,description,order_id) values ($1,'income',round($2),$3,$4,$5)",
+              [
+                shift.rows[0].id,
+                due,
+                order.payment_method === "Pendente" ? "Dinheiro" : order.payment_method,
+                `Finalização venda #${order.order_number} — ${order.customer_name}`,
+                data.orderId,
+              ],
+            );
+          return { ok: true as const, paid: due };
+        });
+        return legacy;
+      }
       throw error;
     }
   });
