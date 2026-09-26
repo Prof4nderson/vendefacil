@@ -23,7 +23,7 @@ export const Route = createFileRoute("/admin")({
       { title: "Administração" },
       { name: "robots", content: "noindex" },
       { property: "og:title", content: "Administração" },
-      { property: "og:description", content: "Gestão do restaurante" },
+      { property: "og:description", content: "Gestão do estabelecimento" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -574,7 +574,7 @@ function AppearanceTab() {
     <div className="rounded-2xl border border-border glass-card p-4">
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium">Nome do restaurante</label>
+          <label className="mb-1 block text-sm font-medium">Nome do estabelecimento</label>
           <input className={inputCls} value={curName} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
@@ -698,11 +698,13 @@ function FinanceTab() {
                 {(() => {
                   const r = s.report as {
                     total_income: number; total_expense: number; opening_amount: number;
-                    orders_count: number; orders_total: number; by_method: Record<string, number>;
+                    orders_count: number; orders_total: number; total_cost?: number; profit?: number; by_method: Record<string, number>;
                   };
                   return (
                     <div className="space-y-1">
                       <div className="flex justify-between"><span>Pedidos ({r.orders_count})</span><span>{brl(r.orders_total)}</span></div>
+                      <div className="flex justify-between"><span>Valor de custo</span><span>{brl(r.total_cost ?? 0)}</span></div>
+                      <div className="flex justify-between font-bold text-primary"><span>Lucro bruto</span><span>{brl(r.profit ?? (r.orders_total - (r.total_cost ?? 0)))}</span></div>
                       <div className="flex justify-between"><span>Entradas</span><span className="text-primary">{brl(r.total_income)}</span></div>
                       <div className="flex justify-between"><span>Saídas</span><span className="text-destructive">{brl(r.total_expense)}</span></div>
                       <div className="flex justify-between font-bold"><span>Saldo final</span><span>{brl(r.opening_amount + r.total_income - r.total_expense)}</span></div>

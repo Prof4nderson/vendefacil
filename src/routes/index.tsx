@@ -44,6 +44,7 @@ import {
 import { openPosShift } from "@/lib/ops.functions";
 import {
   getUserProfile,
+  changePassword,
   loginAccount,
   logoutAccount,
   registerAccount,
@@ -205,6 +206,7 @@ function PosPage() {
   const startShift = useServerFn(openPosShift);
   const register = useServerFn(registerAccount);
   const login = useServerFn(loginAccount);
+  const changeUserPassword = useServerFn(changePassword);
   const logout = useServerFn(logoutAccount);
   const verify = useServerFn(verifyAccount);
   const addSuggestion = useServerFn(addCatalogProduct);
@@ -278,6 +280,7 @@ function PosPage() {
   const [showCustomize, setShowCustomize] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [profileWorking, setProfileWorking] = useState(false);
+  const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [profile, setProfile] = useState({
     name: "",
     email: "",
@@ -717,6 +720,21 @@ function PosPage() {
       setProfileWorking(false);
     }
   }
+  async function savePassword() {
+    if (passwordData.newPassword !== passwordData.confirmPassword)
+      return toast.error("A confirmação da nova senha não confere");
+    if (passwordData.newPassword.length < 6) return toast.error("A nova senha deve ter pelo menos 6 caracteres");
+    setProfileWorking(true);
+    try {
+      await changeUserPassword({ data: { currentPassword: passwordData.currentPassword, newPassword: passwordData.newPassword } });
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast.success("Senha alterada com sucesso");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível alterar a senha");
+    } finally {
+      setProfileWorking(false);
+    }
+  }
   async function logoff() {
     await logout().catch(() => undefined);
     setCart({});
@@ -769,16 +787,22 @@ function PosPage() {
           >
             <Users className="h-4 w-4 text-primary" /> Atendimento
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowAuth(authenticated ? "login" : "signup")}
-            aria-label="Conta"
-          >
-            <CircleUserRound className="h-5 w-5" />
-          </Button>
           {showMenu && (
             <div className="absolute left-0 top-14 z-30 w-64 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
+              {!authenticated ? (
+                <>
+                  <button onClick={() => { setShowAuth("login"); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                    <LogIn className="h-4 w-4 text-primary" /> Login
+                  </button>
+                  <button onClick={() => { setShowAuth("signup"); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                    <UserPlus className="h-4 w-4 text-primary" /> Nova conta
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => { void openProfile(); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                  <CircleUserRound className="h-4 w-4 text-primary" /> Minha conta
+                </button>
+              )}
               <button
                 onClick={() => {
                   window.location.href = "/admin";
@@ -840,12 +864,20 @@ function PosPage() {
               >
                 <BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco
               </button>
-              <button
-                onClick={openProfile}
+              {authenticated && <button
+                onClick={() => { void openProfile(); setShowMenu(false); }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
                 <CircleUserRound className="h-4 w-4 text-primary" /> Meus dados
-              </button>
+              </button>}
+              {authenticated && (
+                <button
+                  onClick={() => { void openProfile(); setShowMenu(false); }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                >
+                  <Settings2 className="h-4 w-4 text-primary" /> Trocar senha
+                </button>
+              )}
               <button
                 onClick={logoff}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-red-300 hover:bg-secondary"
@@ -993,7 +1025,7 @@ function PosPage() {
                       <div>
                         <p className="text-base font-black text-primary">{brl(p.price)}</p>
                         <p className="text-[9px] text-muted-foreground">
-                          Compra {brl(p.purchase_price ?? Number(p.price) * 0.45)} • Estoque{" "}
+                          Custo {brl(p.purchase_price ?? Number(p.price) * 0.45)} • Estoque{" "}
                           {p.stock} • mín. {p.min_stock ?? 5}
                         </p>
                       </div>
@@ -1362,6 +1394,17 @@ function PosPage() {
                 onChange={(e) => setProfile({ ...profile, state: e.target.value })}
                 className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
               />
+            </div>
+            <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+              <h3 className="font-bold">Trocar senha</h3>
+              <div className="mt-3 grid gap-2">
+                <input type="password" placeholder="Senha atual" value={passwordData.currentPassword} onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
+                <input type="password" placeholder="Nova senha (mín. 6 caracteres)" value={passwordData.newPassword} onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
+                <input type="password" placeholder="Confirmar nova senha" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
+              </div>
+              <Button onClick={savePassword} disabled={profileWorking} className="mt-3 h-10 w-full rounded-xl">
+                Alterar senha
+              </Button>
             </div>
             <Button
               onClick={saveProfile}

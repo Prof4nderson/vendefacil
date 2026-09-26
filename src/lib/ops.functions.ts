@@ -281,14 +281,19 @@ export const closeShift = createServerFn({ method: "POST" })
       order_number: number;
       customer_name: string;
       total: string | number;
+      cost: string | number;
       payment_method: string;
       order_type: string;
       status: string;
     }>(
-      `select id, order_number, customer_name, total, payment_method, order_type, status
-       from orders
-       where workspace_id=$1 and created_at >= $2
-       order by order_number`,
+      `select o.id, o.order_number, o.customer_name, o.total, o.payment_method, o.order_type, o.status,
+              coalesce(sum(i.qty * coalesce(p.purchase_price, 0)), 0) as cost
+       from orders o
+       left join order_items i on i.order_id=o.id
+       left join products p on p.id=i.product_id and p.workspace_id=$1
+       where o.workspace_id=$1 and o.created_at >= $2
+       group by o.id
+       order by o.order_number`,
       [workspaceId, shift.opened_at],
     );
 
@@ -310,6 +315,12 @@ export const closeShift = createServerFn({ method: "POST" })
       orders_total: orders
         .filter((o) => o.status !== "cancelled")
         .reduce((s, o) => s + Number(o.total), 0),
+      total_cost: orders
+        .filter((o) => o.status !== "cancelled")
+        .reduce((s, o) => s + Number(o.cost), 0),
+      profit: orders
+        .filter((o) => o.status !== "cancelled")
+        .reduce((s, o) => s + Number(o.total) - Number(o.cost), 0),
       orders,
     };
 

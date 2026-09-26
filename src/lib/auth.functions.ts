@@ -120,3 +120,16 @@ export const updateUserProfile = createServerFn({ method: "POST" }).validator((d
   await session.update({ ...session.data, name: data.name });
   return { ok: true as const };
 });
+
+export const changePassword = createServerFn({ method: "POST" }).validator((data) => z.object({
+  currentPassword: z.string().min(1), newPassword: z.string().min(6),
+}).parse(data)).handler(async ({ data }) => {
+  const ctx = await getTenantContext();
+  const user = await q1<{ id: string; password_hash: string }>(
+    "select id,password_hash from app_users where id=$1 and workspace_id=$2",
+    [ctx.userId, ctx.workspaceId],
+  );
+  if (!user || hash(data.currentPassword) !== user.password_hash) throw new Error("Senha atual inválida");
+  await q("update app_users set password_hash=$1 where id=$2 and workspace_id=$3", [hash(data.newPassword), user.id, ctx.workspaceId]);
+  return { ok: true as const };
+});

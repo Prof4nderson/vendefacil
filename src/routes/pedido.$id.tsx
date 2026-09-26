@@ -90,7 +90,7 @@ function TrackPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {order.customer_name} • {isDelivery ? "Entrega" : "Consumo no restaurante"} • {order.payment_method}
+          {order.customer_name} • {isDelivery ? "Entrega" : "Consumo no estabelecimento"} • {order.payment_method}
         </p>
 
         {order.status === "cancelled" ? (

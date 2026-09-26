@@ -48,6 +48,8 @@ type Report = {
   by_method: Record<string, number>;
   orders_count: number;
   orders_total: number;
+  total_cost: number;
+  profit: number;
   orders: { order_number: number; customer_name: string; total: number; payment_method: string }[];
 };
 
@@ -385,6 +387,14 @@ function CashierPage() {
                 <div className="flex justify-between">
                   <span>Pedidos ({report.orders_count})</span>
                   <span className="font-medium">{brl(report.orders_total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Valor de custo</span>
+                  <span className="font-medium">{brl(report.total_cost)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-primary">
+                  <span>Lucro bruto</span>
+                  <span>{brl(report.profit)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Total de entradas</span>

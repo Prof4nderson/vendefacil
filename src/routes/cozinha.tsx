@@ -112,7 +112,7 @@ function KitchenPage() {
                         {order.order_type === "delivery" ? (
                           <Bike className="h-4 w-4 text-primary" aria-label="Entrega" />
                         ) : (
-                          <Store className="h-4 w-4 text-accent-foreground" aria-label="No restaurante" />
+                          <Store className="h-4 w-4 text-accent-foreground" aria-label="No estabelecimento" />
                         )}
                       </p>
                       <ul className="mt-2 space-y-1">
