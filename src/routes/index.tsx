@@ -868,27 +868,12 @@ function PosPage() {
             >
               <CreditCard className="mr-1 h-4 w-4" /> Finalizar consumo
             </Button>
-            <Button
-              variant="outline"
-              onClick={openSale}
-              className="shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold"
-            >
-              <ShoppingCart className="mr-1 h-4 w-4" /> Vender
-            </Button>
           </div>
         </div>
       )}
       <main className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section id="produtos" className="scroll-mt-24 min-w-0">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div></div>
-            <div className="flex gap-2">
-              <Button className="neon-button rounded-xl" onClick={openSale}>
-                <ShoppingCart className="mr-2 h-4 w-4" /> Vender
-              </Button>
-            </div>
-          </div>
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             <div className="holo-input flex min-w-[220px] flex-1 items-center gap-2 rounded-xl px-3 py-2">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
@@ -929,7 +914,13 @@ function PosPage() {
             </div>
           </div>
           {lowStock.length > 0 && (
-            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/admin?tab=produtos&new=1";
+              }}
+              className="mb-4 flex w-full items-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-left text-sm transition hover:bg-amber-400/20"
+            >
               <BadgeAlert className="h-4 w-4 text-amber-300" />
               <span>
                 <strong>Estoque baixo:</strong>{" "}
@@ -939,17 +930,8 @@ function PosPage() {
                   .join(", ")}
                 {lowStock.length > 3 ? " e mais" : ""}
               </span>
-              <button
-                className="ml-auto text-xs font-bold text-amber-300"
-                onClick={() =>
-                  document
-                    .getElementById("produtos")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              >
-                Ver estoque
-              </button>
-            </div>
+              <span className="ml-auto text-xs font-bold text-amber-300">Abrir cadastro</span>
+            </button>
           )}
           <div
             className={
