@@ -15,6 +15,11 @@ const requiredColumns: Record<string, string[]> = {
   products: ["purchase_price", "min_stock", "stock_control"],
   cash_entries: ["voided"],
   shifts: ["workspace_id"],
+  categories: ["workspace_id"],
+  daily_menu: ["workspace_id"],
+  couriers: ["workspace_id"],
+  app_settings: ["workspace_id"],
+  route_passwords: ["workspace_id"],
 };
 
 export type SalesSchemaStatus = {
@@ -113,6 +118,32 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "alter table cash_entries add column if not exists voided boolean not null default false",
     );
+    await client.query("alter table categories add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("alter table daily_menu add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("alter table couriers add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("alter table cash_entries add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("alter table app_settings add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("alter table route_passwords add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
+    await client.query("insert into workspaces(name) select 'Operação migrada' where not exists (select 1 from workspaces)");
+    await client.query(`do $$ declare w uuid; begin select id into w from workspaces order by created_at limit 1;
+      update categories set workspace_id=w where workspace_id is null; update products set workspace_id=w where workspace_id is null;
+      update daily_menu set workspace_id=w where workspace_id is null; update couriers set workspace_id=w where workspace_id is null;
+      update orders set workspace_id=w where workspace_id is null; update shifts set workspace_id=w where workspace_id is null;
+      update customers set workspace_id=w where workspace_id is null; update cash_entries set workspace_id=w where workspace_id is null;
+      update app_settings set workspace_id=w where workspace_id is null; update route_passwords set workspace_id=w where workspace_id is null;
+    end $$`);
+    await client.query("create index if not exists categories_workspace_idx on categories(workspace_id)");
+    await client.query("create index if not exists daily_menu_workspace_idx on daily_menu(workspace_id)");
+    await client.query("create index if not exists app_settings_workspace_idx on app_settings(workspace_id)");
+    await client.query("create index if not exists route_passwords_workspace_idx on route_passwords(workspace_id)");
+    await client.query("alter table categories drop constraint if exists categories_name_key");
+    await client.query("alter table categories add constraint categories_workspace_name_key unique(workspace_id,name)");
+    await client.query("alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key");
+    await client.query("alter table daily_menu add constraint daily_menu_workspace_weekday_product_key unique(workspace_id,weekday,product_id)");
+    await client.query("alter table app_settings drop constraint if exists app_settings_pkey");
+    await client.query("alter table app_settings add primary key(workspace_id,key)");
+    await client.query("alter table route_passwords drop constraint if exists route_passwords_pkey");
+    await client.query("alter table route_passwords add primary key(workspace_id,route)");
     await client.query(
       "alter table cash_entries alter column amount type numeric(10,2) using amount::numeric",
     );

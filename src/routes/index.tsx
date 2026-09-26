@@ -44,6 +44,8 @@ import {
 import { openPosShift } from "@/lib/ops.functions";
 import {
   getUserProfile,
+  loginAccount,
+  logoutAccount,
   registerAccount,
   updateUserProfile,
   verifyAccount,
@@ -196,6 +198,8 @@ function PosPage() {
   const submitOrder = useServerFn(createOrder);
   const startShift = useServerFn(openPosShift);
   const register = useServerFn(registerAccount);
+  const login = useServerFn(loginAccount);
+  const logout = useServerFn(logoutAccount);
   const verify = useServerFn(verifyAccount);
   const addSuggestion = useServerFn(addCatalogProduct);
   const importCsv = useServerFn(importCatalogCsv);
@@ -655,6 +659,18 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "PIN inválido");
     }
   }
+  async function doLogin() {
+    try {
+      const result = await login({ data: { login: authData.login, password: authData.password } });
+      setAuthenticated(result.name);
+      localStorage.setItem("vendefacil-user", result.name);
+      localStorage.setItem("vendefacil-email", result.email);
+      setShowAuth(null);
+      toast.success("Bem-vindo ao VendeFácil");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Login inválido");
+    }
+  }
   async function openProfile() {
     setShowMenu(false);
     setShowProfile(true);
@@ -703,6 +719,7 @@ function PosPage() {
     }
   }
   function logoff() {
+    void logout().catch(() => undefined);
     localStorage.removeItem("vendefacil-user");
     localStorage.removeItem("vendefacil-email");
     setAuthenticated("");
@@ -1900,20 +1917,19 @@ function PosPage() {
               <div className="mt-4 space-y-3">
                 <input
                   placeholder="Login ou email"
+                  value={authData.login}
+                  onChange={(e) => setAuthData({ ...authData, login: e.target.value })}
                   className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
                 />
                 <input
                   type="password"
                   placeholder="Senha"
+                  value={authData.password}
+                  onChange={(e) => setAuthData({ ...authData, password: e.target.value })}
                   className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
                 />
                 <Button
-                  onClick={() => {
-                    setAuthenticated("Operador");
-                    localStorage.setItem("vendefacil-user", "Operador");
-                    setShowAuth(null);
-                    toast.success("Bem-vindo ao VendeFácil");
-                  }}
+                  onClick={doLogin}
                   className="neon-button h-11 w-full rounded-xl"
                 >
                   <LogIn className="mr-2 h-4 w-4" /> Entrar

@@ -1,15 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireRole } from "./gate.server";
+import { requireRole, requireTenantRole } from "./gate.server";
 import type { CashEntryRow, OrderItemRow, OrderRow, ShiftRow } from "./rows";
 
 const ACTIVE_STATUSES = ["confirmed", "preparing", "ready", "out_for_delivery"];
 
-async function listOrdersByStatus(statuses: string[]) {
+async function listOrdersByStatus(statuses: string[], workspaceId: string) {
   const { q } = await import("./db.server");
   const orders = await q<OrderRow>(
-    "select * from orders where status = any($1::text[]) order by created_at asc",
-    [statuses],
+    "select * from orders where workspace_id=$1 and status = any($2::text[]) order by created_at asc",
+    [workspaceId, statuses],
   );
   if (!orders.length) return { orders, items: [] as OrderItemRow[] };
   const items = await q<OrderItemRow>(
@@ -22,8 +22,8 @@ async function listOrdersByStatus(statuses: string[]) {
 // ---------- Cozinha (KDS) ----------
 
 export const getKitchenOrders = createServerFn({ method: "GET" }).handler(async () => {
-  await requireRole("cozinha");
-  return listOrdersByStatus(["confirmed", "preparing", "ready"]);
+  const { workspaceId } = await requireTenantRole("cozinha");
+  return listOrdersByStatus(["confirmed", "preparing", "ready"], workspaceId);
 });
 
 export const setOrderStatus = createServerFn({ method: "POST" })
@@ -36,12 +36,13 @@ export const setOrderStatus = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    await requireRole("cozinha");
+    const { workspaceId } = await requireTenantRole("cozinha");
     const { tx } = await import("./db.server");
     await tx(async (client) => {
-      await client.query("update orders set status = $1, updated_at = now() where id = $2", [
+      await client.query("update orders set status = $1, updated_at = now() where id = $2 and workspace_id=$3", [
         data.status,
         data.orderId,
+        workspaceId,
       ]);
       if (data.status === "cancelled") {
         // devolve o estoque
@@ -51,7 +52,7 @@ export const setOrderStatus = createServerFn({ method: "POST" })
            where i.order_id = $1 and i.product_id = p.id`,
           [data.orderId],
         );
-        await client.query("update cash_entries set voided=true where order_id=$1", [data.orderId]);
+        await client.query("update cash_entries set voided=true where order_id=$1 and workspace_id=$2", [data.orderId, workspaceId]);
       }
     });
     return { ok: true as const };
@@ -60,19 +61,20 @@ export const setOrderStatus = createServerFn({ method: "POST" })
 // ---------- Entrega ----------
 
 export const getDeliveryBoard = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await requireRole("entrega");
+  const { ops: session, workspaceId } = await requireTenantRole("entrega");
   const { q } = await import("./db.server");
   const ready = await q<OrderRow>(
     `select * from orders
-     where status = 'ready' and order_type = 'delivery' and courier_id is null
+     where workspace_id=$1 and status = 'ready' and order_type = 'delivery' and courier_id is null
      order by created_at asc`,
+    [workspaceId],
   );
   const mine = session.courierId
     ? await q<OrderRow>(
         `select * from orders
-         where courier_id = $1 and status = any($2::text[])
+         where workspace_id=$1 and courier_id = $2 and status = any($3::text[])
          order by created_at asc`,
-        [session.courierId, ACTIVE_STATUSES],
+        [workspaceId, session.courierId, ACTIVE_STATUSES],
       )
     : [];
   const allIds = [...ready, ...mine].map((o) => o.id);
@@ -88,14 +90,14 @@ export const getDeliveryBoard = createServerFn({ method: "GET" }).handler(async 
 export const assignDelivery = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
-    const session = await requireRole("entrega");
+    const { ops: session, workspaceId } = await requireTenantRole("entrega");
     if (!session.courierId) throw new Error("Entregador não identificado");
     const { q } = await import("./db.server");
     const rows = await q<{ id: string }>(
       `update orders set courier_id = $1, courier_name = $2, updated_at = now()
-       where id = $3 and courier_id is null
+       where id = $3 and workspace_id=$4 and courier_id is null
        returning id`,
-      [session.courierId, session.courierName ?? null, data.orderId],
+      [session.courierId, session.courierName ?? null, data.orderId, workspaceId],
     );
     if (!rows.length) throw new Error("Este pedido já foi assumido por outro entregador");
     return { ok: true as const };
@@ -104,28 +106,28 @@ export const assignDelivery = createServerFn({ method: "POST" })
 export const toggleItemChecked = createServerFn({ method: "POST" })
   .validator((data) => z.object({ itemId: z.string().uuid(), checked: z.boolean() }).parse(data))
   .handler(async ({ data }) => {
-    await requireRole("entrega");
+    const { workspaceId } = await requireTenantRole("entrega");
     const { q } = await import("./db.server");
-    await q("update order_items set checked = $1 where id = $2", [data.checked, data.itemId]);
+    await q("update order_items set checked = $1 where id = $2 and exists (select 1 from orders where orders.id=order_items.order_id and orders.workspace_id=$3)", [data.checked, data.itemId, workspaceId]);
     return { ok: true as const };
   });
 
 export const setOutForDelivery = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
-    const session = await requireRole("entrega");
+    const { ops: session, workspaceId } = await requireTenantRole("entrega");
     const { q, q1 } = await import("./db.server");
     const pending = await q1<{ count: string }>(
-      "select count(*)::text as count from order_items where order_id = $1 and checked = false",
-      [data.orderId],
+      "select count(*)::text as count from order_items i where order_id = $1 and checked = false and exists (select 1 from orders o where o.id=i.order_id and o.workspace_id=$2)",
+      [data.orderId, workspaceId],
     );
     if (Number(pending?.count ?? 0) > 0) {
       throw new Error("Confira todos os itens antes de sair para entrega");
     }
     await q(
       `update orders set status = 'out_for_delivery', updated_at = now()
-       where id = $1 and courier_id = $2`,
-      [data.orderId, session.courierId ?? null],
+       where id = $1 and workspace_id=$3 and courier_id = $2`,
+      [data.orderId, session.courierId ?? null, workspaceId],
     );
     return { ok: true as const };
   });
@@ -135,24 +137,26 @@ export const confirmDelivered = createServerFn({ method: "POST" })
     z.object({ orderId: z.string().uuid(), payment_method: z.string().min(2) }).parse(data),
   )
   .handler(async ({ data }) => {
-    const session = await requireRole("entrega");
+    const { ops: session, workspaceId } = await requireTenantRole("entrega");
     const { tx } = await import("./db.server");
     return tx(async (client) => {
       const { rows } = await client.query<OrderRow>(
         `update orders set status = 'delivered', payment_method = $1, updated_at = now()
-         where id = $2 returning *`,
-        [data.payment_method, data.orderId],
+         where id = $2 and workspace_id=$3 returning *`,
+        [data.payment_method, data.orderId, workspaceId],
       );
       const order = rows[0];
       if (!order) throw new Error("Pedido não encontrado");
 
       const { rows: shifts } = await client.query<{ id: string }>(
-        "select id from shifts where closed_at is null order by opened_at desc limit 1",
+        "select id from shifts where workspace_id=$1 and closed_at is null order by opened_at desc limit 1",
+        [workspaceId],
       );
       await client.query(
-        `insert into cash_entries (shift_id, type, amount, method, description, order_id)
-         values ($1,'income',$2,$3,$4,$5)`,
+        `insert into cash_entries (workspace_id,shift_id, type, amount, method, description, order_id)
+         values ($1,$2,'income',$3,$4,$5,$6)`,
         [
+          workspaceId,
           shifts[0]?.id ?? null,
           order.total,
           data.payment_method,
@@ -167,15 +171,16 @@ export const confirmDelivered = createServerFn({ method: "POST" })
 // ---------- Caixa ----------
 
 export const getCashierData = createServerFn({ method: "GET" }).handler(async () => {
-  await requireRole("caixa");
+  const { workspaceId } = await requireTenantRole("caixa");
   const { q, q1 } = await import("./db.server");
   const shift = await q1<ShiftRow>(
-    "select * from shifts where closed_at is null order by opened_at desc limit 1",
+    "select * from shifts where workspace_id=$1 and closed_at is null order by opened_at desc limit 1",
+    [workspaceId],
   );
   if (!shift) return { shift: null, entries: [] as CashEntryRow[] };
   const entries = await q<CashEntryRow>(
-    "select * from cash_entries where shift_id = $1 order by created_at desc",
-    [shift.id],
+    "select * from cash_entries where workspace_id=$1 and shift_id = $2 order by created_at desc",
+    [workspaceId, shift.id],
   );
   return { shift, entries };
 });
@@ -183,13 +188,14 @@ export const getCashierData = createServerFn({ method: "GET" }).handler(async ()
 export const openShift = createServerFn({ method: "POST" })
   .validator((data) => z.object({ opening_amount: z.number().min(0) }).parse(data))
   .handler(async ({ data }) => {
-    await requireRole("caixa");
+    const { workspaceId } = await requireTenantRole("caixa");
     const { q, q1 } = await import("./db.server");
     const existing = await q1<{ id: string }>(
-      "select id from shifts where closed_at is null limit 1",
+      "select id from shifts where workspace_id=$1 and closed_at is null limit 1",
+      [workspaceId],
     );
     if (existing) throw new Error("Já existe um turno aberto");
-    await q("insert into shifts (opening_amount) values ($1)", [data.opening_amount]);
+    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [workspaceId, data.opening_amount]);
     return { ok: true as const };
   });
 
@@ -205,16 +211,17 @@ export const addCashEntry = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    await requireRole("caixa");
+    const { workspaceId } = await requireTenantRole("caixa");
     const { q, q1 } = await import("./db.server");
     const shift = await q1<{ id: string }>(
-      "select id from shifts where closed_at is null order by opened_at desc limit 1",
+      "select id from shifts where workspace_id=$1 and closed_at is null order by opened_at desc limit 1",
+      [workspaceId],
     );
     if (!shift) throw new Error("Abra o turno antes de lançar valores");
     await q(
-      `insert into cash_entries (shift_id, type, amount, method, description)
-       values ($1,$2,$3,$4,$5)`,
-      [shift.id, data.type, data.amount, data.method || null, data.description],
+      `insert into cash_entries (workspace_id,shift_id, type, amount, method, description)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [workspaceId, shift.id, data.type, data.amount, data.method || null, data.description],
     );
     return { ok: true as const };
   });
@@ -231,11 +238,11 @@ export const updateCashEntry = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    await requireRole("caixa");
+    const { workspaceId } = await requireTenantRole("caixa");
     const { q } = await import("./db.server");
     const rows = await q<{ id: string }>(
-      "update cash_entries set amount=$1, description=$2, method=$3 where id=$4 and order_id is null returning id",
-      [data.amount, data.description, data.method || null, data.id],
+      "update cash_entries set amount=$1, description=$2, method=$3 where id=$4 and workspace_id=$5 and order_id is null returning id",
+      [data.amount, data.description, data.method || null, data.id, workspaceId],
     );
     if (!rows.length) throw new Error("Lançamento não pode ser alterado");
     return { ok: true as const };
@@ -244,11 +251,11 @@ export const updateCashEntry = createServerFn({ method: "POST" })
 export const deleteCashEntry = createServerFn({ method: "POST" })
   .validator((data) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data }) => {
-    await requireRole("caixa");
+    const { workspaceId } = await requireTenantRole("caixa");
     const { q } = await import("./db.server");
     const rows = await q<{ id: string }>(
-      "delete from cash_entries where id=$1 and order_id is null returning id",
-      [data.id],
+      "delete from cash_entries where id=$1 and workspace_id=$2 and order_id is null returning id",
+      [data.id, workspaceId],
     );
     if (!rows.length) throw new Error("Lançamentos vinculados a vendas não podem ser excluídos");
     return { ok: true as const };
@@ -257,16 +264,17 @@ export const deleteCashEntry = createServerFn({ method: "POST" })
 export const closeShift = createServerFn({ method: "POST" })
   .validator((data) => z.object({ notes: z.string().optional() }).parse(data))
   .handler(async ({ data }) => {
-    await requireRole("caixa");
+    const { workspaceId } = await requireTenantRole("caixa");
     const { q, q1 } = await import("./db.server");
     const shift = await q1<ShiftRow>(
-      "select * from shifts where closed_at is null order by opened_at desc limit 1",
+      "select * from shifts where workspace_id=$1 and closed_at is null order by opened_at desc limit 1",
+      [workspaceId],
     );
     if (!shift) throw new Error("Nenhum turno aberto");
 
     const entries = await q<CashEntryRow>(
-      "select * from cash_entries where shift_id = $1 and voided = false",
-      [shift.id],
+      "select * from cash_entries where workspace_id=$1 and shift_id = $2 and voided = false",
+      [workspaceId, shift.id],
     );
     const orders = await q<{
       id: string;
@@ -279,9 +287,9 @@ export const closeShift = createServerFn({ method: "POST" })
     }>(
       `select id, order_number, customer_name, total, payment_method, order_type, status
        from orders
-       where created_at >= $1
+       where workspace_id=$1 and created_at >= $2
        order by order_number`,
-      [shift.opened_at],
+      [workspaceId, shift.opened_at],
     );
 
     const income = entries.filter((e) => e.type === "income");
@@ -306,8 +314,8 @@ export const closeShift = createServerFn({ method: "POST" })
     };
 
     await q(
-      "update shifts set closed_at = $1, closing_notes = $2, report = $3::jsonb where id = $4",
-      [report.closed_at, data.notes || null, JSON.stringify(report), shift.id],
+      "update shifts set closed_at = $1, closing_notes = $2, report = $3::jsonb where id = $4 and workspace_id=$5",
+      [report.closed_at, data.notes || null, JSON.stringify(report), shift.id, workspaceId],
     );
     return { ok: true as const, report };
   });
@@ -317,10 +325,12 @@ export const openPosShift = createServerFn({ method: "POST" })
   .validator((data) => z.object({ opening_amount: z.number().min(0) }).parse(data))
   .handler(async ({ data }) => {
     const { q, q1 } = await import("./db.server");
+    const { workspaceId } = await requireTenantRole("caixa");
     const existing = await q1<{ id: string }>(
-      "select id from shifts where closed_at is null limit 1",
+      "select id from shifts where workspace_id=$1 and closed_at is null limit 1",
+      [workspaceId],
     );
     if (existing) throw new Error("Já existe um turno aberto");
-    await q("insert into shifts (opening_amount) values ($1)", [data.opening_amount]);
+    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [workspaceId, data.opening_amount]);
     return { ok: true as const };
   });
