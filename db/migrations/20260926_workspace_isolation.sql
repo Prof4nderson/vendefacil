@@ -102,4 +102,10 @@ create index if not exists couriers_workspace_idx on couriers(workspace_id);
 create index if not exists cash_entries_workspace_idx on cash_entries(workspace_id);
 create index if not exists app_settings_workspace_idx on app_settings(workspace_id);
 create index if not exists route_passwords_workspace_idx on route_passwords(workspace_id);
+update products p set image_url=case
+  when lower(c.name) like '%bebida%' or lower(c.name) like '%cerveja%' then '/product-images/beverages.jpg'
+  when lower(c.name) like '%biscoito%' or lower(c.name) like '%chocolate%' then '/product-images/biscuits.jpg'
+  when lower(c.name) like '%salgadinho%' then '/product-images/snacks.jpg'
+  else '/product-images/grocery.jpg' end
+  from categories c where c.id=p.category_id and (p.image_url is null or p.image_url='');
 commit;

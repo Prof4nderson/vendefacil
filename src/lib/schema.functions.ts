@@ -184,6 +184,12 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query("create index if not exists daily_menu_workspace_idx on daily_menu(workspace_id)");
     await client.query("create index if not exists app_settings_workspace_idx on app_settings(workspace_id)");
     await client.query("create index if not exists route_passwords_workspace_idx on route_passwords(workspace_id)");
+    await client.query(`update products p set image_url=case
+      when lower(c.name) like '%bebida%' or lower(c.name) like '%cerveja%' then '/product-images/beverages.jpg'
+      when lower(c.name) like '%biscoito%' or lower(c.name) like '%chocolate%' then '/product-images/biscuits.jpg'
+      when lower(c.name) like '%salgadinho%' then '/product-images/snacks.jpg'
+      else '/product-images/grocery.jpg' end
+      from categories c where c.id=p.category_id and (p.image_url is null or p.image_url='')`);
     await client.query("alter table categories drop constraint if exists categories_name_key");
     await client.query("alter table categories add constraint categories_workspace_name_key unique(workspace_id,name)");
     await client.query("alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key");

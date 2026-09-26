@@ -427,20 +427,12 @@ function PosPage() {
     setShowSaleCustomer(true);
   }
   async function selectSaleCustomer(customer: Customer) {
-    const saveAfterSelection = selectingSaleCustomer;
     setActiveCustomer(customer.id);
     setSelectingSaleCustomer(false);
     setShowSaleCustomer(false);
-    if (saveAfterSelection) {
-      await saveOpenOrder(customer);
-      return;
-    }
-    setCart({});
     await inspectCustomer(customer);
-    if (selectingFinalizationCustomer) {
-      setSelectingFinalizationCustomer(false);
-      setShowPayment(true);
-    }
+    setSelectingFinalizationCustomer(false);
+    setShowPayment(true);
   }
   async function addNamedCustomer() {
     const name = customerNameDraft.trim();
@@ -450,25 +442,16 @@ function PosPage() {
       ...old,
       { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 },
     ]);
-    const saveAfterSelection = selectingSaleCustomer;
     setActiveCustomer(id);
     setSelectingSaleCustomer(false);
     setShowSaleCustomer(false);
     const customer = { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 };
-    if (saveAfterSelection) {
-      await saveOpenOrder(customer);
-      return;
-    }
-    setCart({});
     await inspectCustomer(customer);
-    if (selectingFinalizationCustomer) {
-      setSelectingFinalizationCustomer(false);
-      setShowPayment(true);
-    }
+    setSelectingFinalizationCustomer(false);
+    setShowPayment(true);
   }
   async function inspectCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
-    setCart({});
     setShowCustomerPanel(true);
     setLoadingCustomerSales(true);
     try {
