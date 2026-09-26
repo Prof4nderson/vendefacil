@@ -1,0 +1,3 @@
+- [x] Redesenhar a experiência mobile com visual dark cyberpunk e light holográfico inspirado na referência.
+- [x] Conferir PostgreSQL, Docker e instruções de VPS.
+- [x] Corrigir fallback de banco para o preview sem quebrar Docker/VPS.

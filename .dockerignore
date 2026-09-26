@@ -1,0 +1,13 @@
+node_modules
+.output
+dist
+build
+.git
+.lovable
+*.log
+.env
+.cache
+
+.workspace
+tsconfig.tsbuildinfo
+supabase
