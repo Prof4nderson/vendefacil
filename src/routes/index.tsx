@@ -189,12 +189,18 @@ const fallbackCategories: Category[] = [
 
 function PosPage() {
   const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
+  const hasAccountSession =
+    typeof window !== "undefined" && !!window.localStorage.getItem("vendefacil-email");
   const products = (menu.products as Product[])?.length
     ? (menu.products as Product[])
-    : fallbackProducts;
+    : hasAccountSession
+      ? []
+      : fallbackProducts;
   const categories = (menu.categories as Category[])?.length
     ? (menu.categories as Category[])
-    : fallbackCategories;
+    : hasAccountSession
+      ? []
+      : fallbackCategories;
   const submitOrder = useServerFn(createOrder);
   const startShift = useServerFn(openPosShift);
   const register = useServerFn(registerAccount);
