@@ -21,21 +21,19 @@ services:
       retries: 5
 
   # App (frontend + backend servidos juntos)
-  app:
-    build: .
-    container_name: vendefacil-app
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      # O app fala com o banco pelo nome do serviço dentro da rede do compose
-      DATABASE_URL: postgresql://${POSTGRES_USER:-delivery}:${POSTGRES_PASSWORD:-delivery}@postgres:5430/${POSTGRES_DB:-delivery}
-      PGSSL_DISABLE: "true"
-      PORT: "3000"
-      HOST: "0.0.0.0"
-    ports:
-      - "${APP_PORT:-3000}:3000"
-
+app:
+  build: .
+  container_name: vendefacil-app
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-delivery}:${POSTGRES_PASSWORD:-delivery}@postgres:5432/${POSTGRES_DB:-delivery}
+    PGSSL_DISABLE: "true"
+    PORT: "3000"
+    HOST: "0.0.0.0"
+  ports:
+    - "${APP_PORT:-3011}:3000"
 volumes:
   postgres-data:
