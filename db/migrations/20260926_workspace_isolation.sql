@@ -85,12 +85,16 @@ alter table cash_entries alter column workspace_id set not null;
 alter table app_settings alter column workspace_id set not null;
 alter table route_passwords alter column workspace_id set not null;
 alter table categories drop constraint if exists categories_name_key;
+alter table categories drop constraint if exists categories_workspace_name_key;
 alter table categories add constraint categories_workspace_name_key unique (workspace_id,name);
 alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key;
+alter table daily_menu drop constraint if exists daily_menu_workspace_weekday_product_key;
 alter table daily_menu add constraint daily_menu_workspace_weekday_product_key unique (workspace_id,weekday,product_id);
 alter table app_settings drop constraint if exists app_settings_pkey;
+alter table app_settings drop constraint if exists app_settings_workspace_key;
 alter table app_settings add primary key (workspace_id,key);
 alter table route_passwords drop constraint if exists route_passwords_pkey;
+alter table route_passwords drop constraint if exists route_passwords_workspace_route_key;
 alter table route_passwords add primary key (workspace_id,route);
 insert into route_passwords(workspace_id,route,password_hash)
 select workspace_id,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'

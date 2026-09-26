@@ -192,12 +192,16 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
       else '/product-images/grocery.jpg' end
       from categories c where c.id=p.category_id and (p.image_url is null or p.image_url='')`);
     await client.query("alter table categories drop constraint if exists categories_name_key");
+    await client.query("alter table categories drop constraint if exists categories_workspace_name_key");
     await client.query("alter table categories add constraint categories_workspace_name_key unique(workspace_id,name)");
     await client.query("alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key");
+    await client.query("alter table daily_menu drop constraint if exists daily_menu_workspace_weekday_product_key");
     await client.query("alter table daily_menu add constraint daily_menu_workspace_weekday_product_key unique(workspace_id,weekday,product_id)");
     await client.query("alter table app_settings drop constraint if exists app_settings_pkey");
+    await client.query("alter table app_settings drop constraint if exists app_settings_workspace_key");
     await client.query("alter table app_settings add primary key(workspace_id,key)");
     await client.query("alter table route_passwords drop constraint if exists route_passwords_pkey");
+    await client.query("alter table route_passwords drop constraint if exists route_passwords_workspace_route_key");
     await client.query("alter table route_passwords add primary key(workspace_id,route)");
     await client.query(
       `insert into route_passwords(workspace_id,route,password_hash)
