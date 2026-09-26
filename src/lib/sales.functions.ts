@@ -19,15 +19,74 @@ export type SaleRow = {
 };
 
 export const getSales = createServerFn({ method: "GET" }).handler(async () => {
-  return q<SaleRow>(
-    `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
+  try {
+    return await q<SaleRow>(
+      `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
             o.payment_status, o.payment_method, o.status, o.created_at,
             coalesce(sum(i.qty), 0)::int as items_count,
             coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
      from orders o left join order_items i on i.order_id=o.id
      group by o.id order by o.created_at desc limit 200`,
-  );
+    );
+  } catch {
+    // Compatibilidade temporária com bancos VPS que ainda não receberam a migração.
+    try {
+      return await q<SaleRow>(
+        `select o.id, o.order_number, o.customer_name, o.total, o.total as amount_paid,
+                0 as credit_amount, 'paid' as payment_status, o.payment_method, o.status, o.created_at,
+                coalesce(sum(i.qty), 0)::int as items_count,
+                coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
+         from orders o left join order_items i on i.order_id=o.id
+         group by o.id order by o.created_at desc limit 200`,
+      );
+    } catch {
+      return [];
+    }
+  }
 });
+
+export const getOpenCustomerSales = createServerFn({ method: "GET" })
+  .validator((data) => z.object({ customerName: z.string().min(2) }).parse(data))
+  .handler(async ({ data }) => {
+    try {
+      return await q<SaleRow>(
+        `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
+                o.payment_status, o.payment_method, o.status, o.created_at,
+                coalesce(sum(i.qty), 0)::int as items_count,
+                coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
+         from orders o left join order_items i on i.order_id=o.id
+         where lower(o.customer_name)=lower($1) and o.status not in ('cancelled','served','delivered')
+         group by o.id order by o.created_at asc`,
+        [data.customerName.trim()],
+      );
+    } catch {
+      try {
+        return await q<SaleRow>(
+          `select o.id, o.order_number, o.customer_name, o.total, o.total as amount_paid,
+                  0 as credit_amount, 'paid' as payment_status, o.payment_method, o.status, o.created_at,
+                  coalesce(sum(i.qty), 0)::int as items_count,
+                  coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
+           from orders o left join order_items i on i.order_id=o.id
+           where lower(o.customer_name)=lower($1) and o.status not in ('cancelled','served','delivered')
+           group by o.id order by o.created_at asc`,
+          [data.customerName.trim()],
+        );
+      } catch {
+        return [];
+      }
+    }
+  });
+
+export const finalizeOpenSale = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    const rows = await q<{ id: string }>(
+      "update orders set status='served', updated_at=now() where id=$1 and status not in ('cancelled','served','delivered') returning id",
+      [data.orderId],
+    );
+    if (!rows.length) throw new Error("Pedido já finalizado ou não encontrado");
+    return { ok: true as const };
+  });
 
 export const cancelSale = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))

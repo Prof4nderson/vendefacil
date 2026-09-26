@@ -32,6 +32,12 @@ import {
 import { toast } from "sonner";
 import { getMenuData, getSettings } from "@/lib/public.functions";
 import { createOrder } from "@/lib/orders.functions";
+import {
+  cancelSale,
+  finalizeOpenSale,
+  getOpenCustomerSales,
+  type SaleRow,
+} from "@/lib/sales.functions";
 import { openPosShift } from "@/lib/ops.functions";
 import { registerAccount, verifyAccount } from "@/lib/auth.functions";
 import {
@@ -180,6 +186,9 @@ function PosPage() {
   const verify = useServerFn(verifyAccount);
   const addSuggestion = useServerFn(addCatalogProduct);
   const importCsv = useServerFn(importCatalogCsv);
+  const loadOpenSales = useServerFn(getOpenCustomerSales);
+  const cancelOpenSale = useServerFn(cancelSale);
+  const finalizeSale = useServerFn(finalizeOpenSale);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
@@ -229,6 +238,8 @@ function PosPage() {
   const [creditAmount, setCreditAmount] = useState(0);
   const [showSaleCustomer, setShowSaleCustomer] = useState(false);
   const [customerNameDraft, setCustomerNameDraft] = useState("");
+  const [openCustomerSales, setOpenCustomerSales] = useState<SaleRow[]>([]);
+  const [loadingCustomerSales, setLoadingCustomerSales] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
   const [fontScale, setFontScale] = useState(() =>
     typeof window !== "undefined"
@@ -314,6 +325,37 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
     setShowSaleCustomer(false);
+  }
+  async function inspectCustomer(customer: Customer) {
+    setActiveCustomer(customer.id);
+    setCart({});
+    setLoadingCustomerSales(true);
+    try {
+      setOpenCustomerSales(await loadOpenSales({ data: { customerName: customer.name } }));
+    } catch {
+      setOpenCustomerSales([]);
+    } finally {
+      setLoadingCustomerSales(false);
+    }
+  }
+  async function finishOpenSale(orderId: string) {
+    try {
+      await finalizeSale({ data: { orderId } });
+      setOpenCustomerSales((old) => old.filter((s) => s.id !== orderId));
+      toast.success("Pedido finalizado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível finalizar");
+    }
+  }
+  async function cancelOpenCustomerSale(orderId: string) {
+    if (!window.confirm("Cancelar este pedido aberto?")) return;
+    try {
+      await cancelOpenSale({ data: { orderId } });
+      setOpenCustomerSales((old) => old.filter((s) => s.id !== orderId));
+      toast.success("Pedido cancelado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível cancelar");
+    }
   }
   async function handleOpenShift() {
     try {
@@ -685,10 +727,7 @@ function PosPage() {
               {customers.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => {
-                    setActiveCustomer(c.id);
-                    setCart({});
-                  }}
+                  onClick={() => inspectCustomer(c)}
                   className={`flex w-full items-center gap-3 rounded-xl p-3 text-left ${activeCustomer === c.id ? "bg-primary/15 ring-1 ring-primary/40" : "bg-secondary/50"}`}
                 >
                   <div className="grid h-9 w-9 place-items-center rounded-full bg-background text-xs font-black text-primary">
@@ -711,6 +750,61 @@ function PosPage() {
                   </div>
                 </button>
               ))}
+            </div>
+            <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black uppercase tracking-wide text-primary">
+                  Pedidos em aberto
+                </p>
+                {loadingCustomerSales && (
+                  <span className="text-xs text-muted-foreground">Carregando...</span>
+                )}
+              </div>
+              {!loadingCustomerSales && openCustomerSales.length === 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Nenhum pedido em aberto para este cliente.
+                </p>
+              )}
+              {openCustomerSales.map((sale) => (
+                <div key={sale.id} className="mt-2 rounded-lg bg-secondary/70 p-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <b>Venda #{sale.order_number}</b>
+                    <b className="text-primary">{brl(sale.total)}</b>
+                  </div>
+                  <div className="mt-1 space-y-1">
+                    {sale.items.map((item, index) => (
+                      <p key={`${item.name}-${index}`} className="text-xs text-muted-foreground">
+                        {item.qty}× {item.name}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => finishOpenSale(sale.id)}
+                      className="neon-button flex-1 rounded-lg px-2 py-1.5 text-xs font-bold"
+                    >
+                      Finalizar
+                    </button>
+                    <button
+                      onClick={() => cancelOpenCustomerSale(sale.id)}
+                      className="rounded-lg bg-red-400/10 px-2 py-1.5 text-xs font-bold text-red-300"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {(openCustomerSales.length > 0 || currentCustomer.credit > 0) && (
+                <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
+                  <span className="font-bold">Total devido</span>
+                  <b className="text-lg text-amber-300">
+                    {brl(
+                      openCustomerSales.reduce((sum, sale) => sum + Number(sale.total), 0) +
+                        Number(currentCustomer.credit),
+                    )}
+                  </b>
+                </div>
+              )}
             </div>
             <button
               onClick={newCustomer}
