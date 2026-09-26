@@ -165,3 +165,39 @@ Sem essa variável, o PIN fica disponível no log do container para desenvolvime
 ### Multiusuário
 
 O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do estabelecimento como `owner`; a próxima etapa natural é adicionar convites de operadores e aplicar `workspace_id` nas consultas de produtos, pedidos, turnos e relatórios para isolamento completo entre estabelecimentos.
+
+
+## 8. Atualizações do PDV
+
+O menu superior agora concentra:
+
+- acesso Admin;
+- abrir turno, quando ainda não houver turno iniciado;
+- cadastro do caixa inicial/troco;
+- importação de produtos CSV;
+- acesso ao catálogo geral de sugestões;
+- criação de nova mesa/cliente.
+
+O topo passa a mostrar os produtos selecionados e o botão **Finalizar**. Os cards foram reduzidos para aumentar a densidade na tela.
+
+### CSV de produtos
+
+O CSV aceita cabeçalhos como:
+
+```csv
+nome,categoria,preco,preco_compra,estoque,estoque_minimo
+Coxinha,Salgados,7.50,3.20,30,8
+```
+
+### Fiado
+
+Na finalização é possível informar quanto será pago agora. A diferença fica como saldo devedor do cliente. O saldo é persistido em `customers.credit_balance`, vinculado às compras seguintes pelo nome do cliente.
+
+### Atualizar um banco já existente
+
+Como o PostgreSQL mantém volume persistente, o script inicial do Docker não roda novamente. Execute a migração uma vez:
+
+```bash
+docker compose exec -T postgres psql -U delivery -d delivery < db/migrations/20260926_vendefacil_sales.sql
+docker compose up -d --build --force-recreate app
+```

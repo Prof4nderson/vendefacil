@@ -32,15 +32,27 @@ import {
 import { toast } from "sonner";
 import { getMenuData, getSettings } from "@/lib/public.functions";
 import { createOrder } from "@/lib/orders.functions";
-import { openShift } from "@/lib/ops.functions";
+import { openPosShift } from "@/lib/ops.functions";
 import { registerAccount, verifyAccount } from "@/lib/auth.functions";
+import {
+  addCatalogProduct,
+  getCatalogSuggestions,
+  getCustomers,
+  importCatalogCsv,
+  type CatalogSuggestion,
+} from "@/lib/catalog.functions";
 import { brl, PAYMENT_METHODS } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
-    const [menu, settings] = await Promise.all([getMenuData(), getSettings()]);
-    return { menu, settings };
+    const [menu, settings, suggestions, savedCustomers] = await Promise.all([
+      getMenuData(),
+      getSettings(),
+      getCatalogSuggestions(),
+      getCustomers(),
+    ]);
+    return { menu, settings, suggestions, savedCustomers };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -65,7 +77,14 @@ type Product = {
 };
 type Category = { id: string; name: string; sort_order: number };
 type Cart = Record<string, number>;
-type Customer = { id: string; name: string; note: string; total: number; items: number };
+type Customer = {
+  id: string;
+  name: string;
+  note: string;
+  total: number;
+  items: number;
+  credit: number;
+};
 
 const fallbackProducts: Product[] = [
   {
@@ -148,7 +167,7 @@ const fallbackCategories: Category[] = [
 ];
 
 function PosPage() {
-  const { menu, settings } = Route.useLoaderData();
+  const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
   const products = (menu.products as Product[])?.length
     ? (menu.products as Product[])
     : fallbackProducts;
@@ -156,14 +175,31 @@ function PosPage() {
     ? (menu.categories as Category[])
     : fallbackCategories;
   const submitOrder = useServerFn(createOrder);
-  const startShift = useServerFn(openShift);
+  const startShift = useServerFn(openPosShift);
   const register = useServerFn(registerAccount);
   const verify = useServerFn(verifyAccount);
+  const addSuggestion = useServerFn(addCatalogProduct);
+  const importCsv = useServerFn(importCatalogCsv);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
   const [customers, setCustomers] = useState<Customer[]>([
-    { id: "consumer", name: "Consumidor", note: "Venda sem identificação", total: 0, items: 0 },
+    {
+      id: "consumer",
+      name: "Consumidor",
+      note: "Venda sem identificação",
+      total: 0,
+      items: 0,
+      credit: 0,
+    },
+    ...savedCustomers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      note: c.phone || "Cliente cadastrado",
+      total: 0,
+      items: 0,
+      credit: Number(c.credit_balance),
+    })),
   ]);
   const [activeCustomer, setActiveCustomer] = useState("consumer");
   const [payment, setPayment] = useState(PAYMENT_METHODS[0]);
@@ -182,6 +218,15 @@ function PosPage() {
     typeof window !== "undefined" ? window.localStorage.getItem("vendefacil-user") || "" : "",
   );
   const [opening, setOpening] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [showShift, setShowShift] = useState(false);
+  const [openingAmount, setOpeningAmount] = useState("");
+  const [shiftOpen, setShiftOpen] = useState(
+    () =>
+      typeof window !== "undefined" && window.localStorage.getItem("vendefacil-shift-open") === "1",
+  );
+  const [creditAmount, setCreditAmount] = useState(0);
 
   const visible = useMemo(
     () =>
@@ -220,12 +265,32 @@ function PosPage() {
   }
   function newCustomer() {
     const id = `c-${Date.now()}`;
+    const name =
+      typeof window !== "undefined"
+        ? window.prompt("Nome do cliente ou mesa:", `Cliente ${customers.length}`)?.trim()
+        : "";
+    if (!name) return;
     setCustomers((old) => [
       ...old,
-      { id, name: `Cliente ${old.length}`, note: "Consumo em aberto", total: 0, items: 0 },
+      { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 },
     ]);
     setActiveCustomer(id);
     setCart({});
+  }
+  async function handleOpenShift() {
+    try {
+      await startShift({ data: { opening_amount: Number(openingAmount.replace(",", ".")) || 0 } });
+      setShiftOpen(true);
+      localStorage.setItem("vendefacil-shift-open", "1");
+      setShowShift(false);
+      toast.success("Turno aberto com fundo inicial registrado");
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("Já existe")) {
+        setShiftOpen(true);
+        localStorage.setItem("vendefacil-shift-open", "1");
+        setShowShift(false);
+      } else toast.error(e instanceof Error ? e.message : "Não foi possível abrir o turno");
+    }
   }
   async function checkout() {
     if (!cartItems.length) return toast.error("Adicione pelo menos um produto");
@@ -236,6 +301,8 @@ function PosPage() {
       } catch {
         /* turno já aberto */
       }
+      setShiftOpen(true);
+      localStorage.setItem("vendefacil-shift-open", "1");
       if (
         cartItems.every((i) => i.product.id.includes("-")) &&
         cartItems.some((i) => i.product.id.startsWith("demo-"))
@@ -248,6 +315,8 @@ function PosPage() {
             customer_phone: "000000000",
             order_type: "dine_in",
             payment_method: payment,
+            amount_paid: Math.max(0, total - creditAmount),
+            credit_amount: creditAmount,
             items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
           },
         });
@@ -260,6 +329,7 @@ function PosPage() {
       );
       setCart({});
       setShowPayment(false);
+      setCreditAmount(0);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar a venda");
     } finally {
@@ -299,7 +369,7 @@ function PosPage() {
   return (
     <div className="min-h-screen pb-8">
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-8">
-        <div className="mx-auto flex max-w-[1500px] items-center gap-4">
+        <div className="relative mx-auto flex max-w-[1500px] items-center gap-4">
           <div className="icon-tile grid h-11 w-11 shrink-0 place-items-center rounded-2xl">
             <Store className="h-5 w-5 text-primary" />
           </div>
@@ -311,7 +381,8 @@ function PosPage() {
           </div>
           <div className="ml-auto hidden items-center gap-2 md:flex">
             <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary">
-              <span className="mr-1 inline-block h-2 w-2 rounded-full bg-primary" /> Turno aberto
+              <span className="mr-1 inline-block h-2 w-2 rounded-full bg-primary" />{" "}
+              {shiftOpen ? "Turno aberto" : "Turno não iniciado"}
             </span>
             <span className="text-xs text-muted-foreground">Hoje, 26 set • 14:32</span>
           </div>
@@ -323,11 +394,83 @@ function PosPage() {
           >
             <CircleUserRound className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Menu">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowMenu((v) => !v)}
+            aria-label="Menu"
+          >
             <Menu className="h-5 w-5" />
           </Button>
+          {showMenu && (
+            <div className="absolute right-0 top-14 z-30 w-64 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
+              <button
+                onClick={() => {
+                  window.location.href = "/admin";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <LayoutDashboard className="h-4 w-4 text-primary" /> Acesso Admin
+              </button>
+              {!shiftOpen && (
+                <button
+                  onClick={() => {
+                    setShowShift(true);
+                    setShowMenu(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                >
+                  <DollarSign className="h-4 w-4 text-primary" /> Abrir turno
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setShowCatalog(true);
+                  setShowMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <Package className="h-4 w-4 text-primary" /> Importar CSV / produtos
+              </button>
+              <button
+                onClick={() => {
+                  newCustomer();
+                  setShowMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <Plus className="h-4 w-4 text-primary" /> Nova mesa
+              </button>
+            </div>
+          )}
         </div>
       </header>
+      {count > 0 && (
+        <div className="sticky top-[68px] z-10 border-b border-primary/20 bg-background/95 px-4 py-2 backdrop-blur-xl md:px-8">
+          <div className="mx-auto flex max-w-[1500px] items-center gap-3">
+            <ShoppingCart className="h-4 w-4 shrink-0 text-primary" />
+            <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
+              {cartItems.map(({ product: p, qty }) => (
+                <button
+                  key={p.id}
+                  onClick={() => add(p, -qty)}
+                  className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold"
+                >
+                  {qty}× {p.name}
+                </button>
+              ))}
+            </div>
+            <span className="shrink-0 text-sm font-black text-primary">{brl(total)}</span>
+            <Button
+              disabled={opening}
+              onClick={() => setShowPayment(true)}
+              className="neon-button shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold"
+            >
+              <CreditCard className="mr-1 h-4 w-4" /> Finalizar
+            </Button>
+          </div>
+        </div>
+      )}
       <main className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -402,9 +545,9 @@ function PosPage() {
               return (
                 <article
                   key={p.id}
-                  className="glass-card flex min-h-[245px] flex-col rounded-[1.4rem] p-3 transition-transform hover:-translate-y-0.5"
+                  className="glass-card flex min-h-[205px] flex-col rounded-2xl p-2 transition-transform hover:-translate-y-0.5"
                 >
-                  <div className="relative aspect-[1.25] overflow-hidden rounded-xl bg-secondary">
+                  <div className="relative aspect-[1.5] overflow-hidden rounded-xl bg-secondary">
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
@@ -418,7 +561,7 @@ function PosPage() {
                       {isLow ? `Restam ${p.stock}` : "Disponível"}
                     </span>
                   </div>
-                  <div className="flex flex-1 flex-col pt-3">
+                  <div className="flex flex-1 flex-col pt-2">
                     <h3 className="line-clamp-2 text-sm font-extrabold leading-tight">{p.name}</h3>
                     <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
                       {p.description}
@@ -500,6 +643,9 @@ function PosPage() {
                   <div className="text-right">
                     <p className="text-xs font-bold">{c.items} itens</p>
                     <p className="text-xs text-primary">{brl(c.total)}</p>
+                    {c.credit > 0 && (
+                      <p className="text-[10px] font-bold text-amber-300">Fiado {brl(c.credit)}</p>
+                    )}
                   </div>
                 </button>
               ))}
@@ -587,6 +733,117 @@ function PosPage() {
           </div>
         </aside>
       </main>
+      {showShift && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowShift(false)}
+        >
+          <div
+            className="glass-card w-full max-w-sm rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Caixa</p>
+                <h2 className="font-display text-2xl font-bold">Abrir turno</h2>
+              </div>
+              <button onClick={() => setShowShift(false)}>
+                <X />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Informe o dinheiro disponível para troco.
+            </p>
+            <input
+              value={openingAmount}
+              onChange={(e) => setOpeningAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder="Troco inicial · 0,00"
+              className="mt-4 h-12 w-full rounded-xl border border-input bg-background px-3"
+            />
+            <Button onClick={handleOpenShift} className="neon-button mt-4 h-12 w-full rounded-xl">
+              <DollarSign className="mr-2 h-4 w-4" /> Abrir turno
+            </Button>
+          </div>
+        </div>
+      )}
+      {showCatalog && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowCatalog(false)}
+        >
+          <div
+            className="glass-card max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Catálogo geral</p>
+                <h2 className="font-display text-2xl font-bold">Sugestões de produtos</h2>
+              </div>
+              <button onClick={() => setShowCatalog(false)}>
+                <X />
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Adicione uma sugestão ao cardápio deste estabelecimento ou importe uma lista CSV.
+            </p>
+            <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-primary/50 bg-primary/10 px-4 py-3 text-sm font-bold text-primary">
+              <FileText className="h-4 w-4" /> Importar CSV
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const result = await importCsv({ data: { csv: await file.text() } });
+                    toast.success(`${result.imported} produtos importados`);
+                    setShowCatalog(false);
+                    window.location.reload();
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Falha ao importar CSV");
+                  }
+                }}
+              />
+            </label>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {(suggestions as CatalogSuggestion[]).map((s) => (
+                <div key={s.id} className="flex items-center gap-3 rounded-xl bg-secondary/60 p-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-background text-xl">
+                    {s.icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{s.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {s.category_name} • {brl(s.suggested_price)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await addSuggestion({
+                          data: { suggestionId: s.id, stock: 0, minStock: 5 },
+                        });
+                        toast.success(`${s.name} adicionado ao cardápio`);
+                        window.location.reload();
+                      } catch (err) {
+                        toast.error(
+                          err instanceof Error ? err.message : "Não foi possível adicionar",
+                        );
+                      }
+                    }}
+                    className="neon-button rounded-lg px-3 py-2 text-xs font-bold"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {showPayment && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
@@ -615,6 +872,35 @@ function PosPage() {
                   {m}
                 </button>
               ))}
+            </div>
+            <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
+              <label className="text-xs font-bold text-amber-200">Valor no fiado (opcional)</label>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">R$</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={total}
+                  step="0.01"
+                  value={creditAmount || ""}
+                  onChange={(e) =>
+                    setCreditAmount(Math.min(total, Math.max(0, Number(e.target.value) || 0)))
+                  }
+                  placeholder="0,00"
+                  className="h-10 flex-1 rounded-lg border border-amber-400/30 bg-background px-3 text-sm"
+                />
+                <button
+                  onClick={() => setCreditAmount(total)}
+                  className="rounded-lg bg-amber-300/20 px-2 py-2 text-xs font-bold text-amber-200"
+                >
+                  Tudo
+                </button>
+              </div>
+              {creditAmount > 0 && (
+                <p className="mt-2 text-xs text-amber-200">
+                  Paga agora {brl(total - creditAmount)} • fica devendo {brl(creditAmount)}
+                </p>
+              )}
             </div>
             <div className="mt-5 flex items-center justify-between rounded-xl bg-secondary/60 p-4">
               <span className="font-semibold">Total</span>

@@ -8,6 +8,8 @@ const orderInput = z.object({
   address: z.string().optional(),
   payment_method: z.string().min(2),
   notes: z.string().optional(),
+  amount_paid: z.number().min(0).optional(),
+  credit_amount: z.number().min(0).optional(),
   items: z
     .array(
       z.object({
@@ -62,12 +64,33 @@ export const createOrder = createServerFn({ method: "POST" })
           return sum + Number(product?.price ?? 0) * item.qty;
         }, 0);
 
+        const amountPaid = Math.min(total, Math.max(0, data.amount_paid ?? total));
+        const creditAmount = Math.max(0, total - amountPaid);
+        const paymentStatus = creditAmount === 0 ? "paid" : amountPaid === 0 ? "credit" : "partial";
+        let customerId: string | null = null;
+        if (data.customer_name.trim().toLowerCase() !== "consumidor") {
+          const existingCustomer = await client.query<{ id: string }>(
+            "select id from customers where workspace_id is null and lower(name)=lower($1) limit 1",
+            [data.customer_name.trim()],
+          );
+          customerId =
+            existingCustomer.rows[0]?.id ??
+            (
+              await client.query<{ id: string }>(
+                "insert into customers (name, phone) values ($1,$2) returning id",
+                [data.customer_name.trim(), data.customer_phone.trim()],
+              )
+            ).rows[0]?.id ??
+            null;
+        }
+
         const { rows: orderRows } = await client.query<{ id: string; order_number: number }>(
           `insert into orders
-             (customer_name, customer_phone, order_type, address, payment_method, notes, total, status)
-           values ($1,$2,$3,$4,$5,$6,$7,'confirmed')
+             (customer_id, customer_name, customer_phone, order_type, address, payment_method, notes, total, amount_paid, credit_amount, payment_status, status)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmed')
            returning id, order_number`,
           [
+            customerId,
             data.customer_name.trim(),
             data.customer_phone.trim(),
             data.order_type,
@@ -75,10 +98,20 @@ export const createOrder = createServerFn({ method: "POST" })
             data.payment_method,
             data.notes?.trim() || null,
             total,
+            amountPaid,
+            creditAmount,
+            paymentStatus,
           ],
         );
         const order = orderRows[0];
         if (!order) throw new Error("Pedido não foi criado");
+
+        if (customerId && creditAmount > 0) {
+          await client.query(
+            "update customers set credit_balance = credit_balance + $1, updated_at=now() where id=$2",
+            [creditAmount, customerId],
+          );
+        }
 
         for (const item of data.items) {
           const product = products.find((p) => p.id === item.product_id);
@@ -119,7 +152,7 @@ export const createOrder = createServerFn({ method: "POST" })
              values ($1, 'income', $2, $3, $4, $5)`,
             [
               shiftId,
-              total,
+              amountPaid,
               data.payment_method,
               `Venda #${order.order_number} — ${data.customer_name}`,
               order.id,

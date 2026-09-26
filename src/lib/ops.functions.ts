@@ -272,3 +272,16 @@ export const closeShift = createServerFn({ method: "POST" })
     );
     return { ok: true as const, report };
   });
+
+// Abertura rápida pelo PDV: o operador já está autenticado no fluxo da aplicação.
+export const openPosShift = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ opening_amount: z.number().min(0) }).parse(data))
+  .handler(async ({ data }) => {
+    const { q, q1 } = await import("./db.server");
+    const existing = await q1<{ id: string }>(
+      "select id from shifts where closed_at is null limit 1",
+    );
+    if (existing) throw new Error("Já existe um turno aberto");
+    await q("insert into shifts (opening_amount) values ($1)", [data.opening_amount]);
+    return { ok: true as const };
+  });
