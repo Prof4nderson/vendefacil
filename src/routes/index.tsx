@@ -272,6 +272,8 @@ function PosPage() {
       typeof window !== "undefined" && window.localStorage.getItem("vendefacil-shift-open") === "1",
   );
   const [creditAmount, setCreditAmount] = useState(0);
+  const [orderType, setOrderType] = useState<"dine_in" | "delivery">("dine_in");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [showSaleCustomer, setShowSaleCustomer] = useState(false);
   const [selectingSaleCustomer, setSelectingSaleCustomer] = useState(false);
   const [selectingFinalizationCustomer, setSelectingFinalizationCustomer] = useState(false);
@@ -584,6 +586,10 @@ function PosPage() {
       return toast.error("Adicione produtos ou selecione um consumo em aberto");
     setOpening(true);
     try {
+      if (orderType === "delivery" && !deliveryAddress.trim()) {
+        toast.error("Informe o endereço de entrega");
+        return;
+      }
       try {
         await startShift({ data: { opening_amount: 0 } });
       } catch {
@@ -603,7 +609,8 @@ function PosPage() {
           data: {
             customer_name: currentCustomer.name,
             customer_phone: "000000000",
-            order_type: "dine_in",
+            order_type: orderType,
+            address: orderType === "delivery" ? deliveryAddress : undefined,
             payment_method: payment,
             amount_paid: Math.max(0, total - newCredit),
             credit_amount: newCredit,
@@ -623,6 +630,8 @@ function PosPage() {
       setCart({});
       setShowPayment(false);
       setCreditAmount(0);
+      setOrderType("dine_in");
+      setDeliveryAddress("");
       setOpenCustomerSales([]);
       setCustomers((old) =>
         old.map((c) => (c.id === activeCustomer ? { ...c, total: 0, items: 0, credit: 0 } : c)),
@@ -1856,6 +1865,11 @@ function PosPage() {
               </span>
               <span className="text-xs font-bold text-primary">Selecionar / incluir</span>
             </button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button onClick={() => setOrderType("dine_in")} className={`rounded-xl border p-3 text-sm font-bold ${orderType === "dine_in" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}>No estabelecimento</button>
+              <button onClick={() => setOrderType("delivery")} className={`rounded-xl border p-3 text-sm font-bold ${orderType === "delivery" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}>Delivery</button>
+            </div>
+            {orderType === "delivery" && <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Endereço de entrega" className="mt-3 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm" />}
             <div className="mt-5 grid grid-cols-2 gap-2">
               {PAYMENT_METHODS.map((m) => (
                 <button
