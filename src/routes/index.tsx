@@ -649,12 +649,14 @@ function PosPage() {
   async function doVerify() {
     try {
       await verify({ data: { email: authData.email, pin: authData.pin } });
+      setCart({});
       setAuthenticated(authData.name);
       localStorage.setItem("vendefacil-user", authData.name);
       localStorage.setItem("vendefacil-email", authData.email);
       setShowAuth(null);
       setPinMode(false);
       toast.success("Conta ativada com sucesso");
+      window.location.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "PIN inválido");
     }
@@ -662,11 +664,13 @@ function PosPage() {
   async function doLogin() {
     try {
       const result = await login({ data: { login: authData.login, password: authData.password } });
+      setCart({});
       setAuthenticated(result.name);
       localStorage.setItem("vendefacil-user", result.name);
       localStorage.setItem("vendefacil-email", result.email);
       setShowAuth(null);
       toast.success("Bem-vindo ao VendeFácil");
+      window.location.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Login inválido");
     }
@@ -718,14 +722,18 @@ function PosPage() {
       setProfileWorking(false);
     }
   }
-  function logoff() {
-    void logout().catch(() => undefined);
+  async function logoff() {
+    await logout().catch(() => undefined);
+    setCart({});
+    setOpenCustomerSales([]);
+    setActiveCustomer("consumer");
     localStorage.removeItem("vendefacil-user");
     localStorage.removeItem("vendefacil-email");
     setAuthenticated("");
     setShowMenu(false);
     setShowAuth("login");
     toast.success("Sessão encerrada");
+    window.location.reload();
   }
 
   return (
