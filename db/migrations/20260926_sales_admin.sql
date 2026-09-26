@@ -30,6 +30,7 @@ alter table orders add column if not exists credit_amount numeric(10,2) not null
 alter table orders add column if not exists payment_status text not null default 'paid';
 alter table shifts add column if not exists workspace_id uuid references workspaces(id);
 alter table cash_entries add column if not exists voided boolean not null default false;
+alter table cash_entries alter column amount type numeric(10,2) using amount::numeric;
 create index if not exists orders_cancelled_idx on orders(status, created_at desc);
 create index if not exists orders_customer_idx on orders(customer_id, created_at desc);
 create index if not exists customers_credit_idx on customers(credit_balance desc);

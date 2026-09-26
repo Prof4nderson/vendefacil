@@ -108,6 +108,9 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
       "alter table cash_entries add column if not exists voided boolean not null default false",
     );
     await client.query(
+      "alter table cash_entries alter column amount type numeric(10,2) using amount::numeric",
+    );
+    await client.query(
       "create index if not exists orders_customer_idx on orders(customer_id,created_at desc)",
     );
     await client.query(
