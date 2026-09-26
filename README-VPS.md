@@ -152,15 +152,25 @@ A tela inicial agora funciona como um **PDV de uma única tela**, preservando a 
 - fechamento de turno pela tela **/caixa**, com resumo detalhado e base para exportação/envio;
 - catálogo inicial de alimentos, bebidas, salgados e doces; o admin continua disponível em **/admin**.
 
-### PIN de email
+### PIN de email via MailerSend
 
-Configure `EMAIL_WEBHOOK_URL` no `.env` para conectar um provedor HTTP de email. O endpoint recebe:
+Configure no `.env` ou nos secrets do deploy:
+
+```bash
+MAILERSEND_API_TOKEN=mlsn.seu_token
+MAILERSEND_FROM_EMAIL=no-reply@seu-dominio-verificado.com
+MAILERSEND_FROM_NAME=VendeFácil
+```
+
+`MAILERSEND_FROM_EMAIL` precisa ser um remetente de domínio verificado no MailerSend. O cadastro gera um PIN de 6 dígitos, envia pela API oficial e o código expira em 15 minutos. O token não deve ser commitado nem incluído no pacote distribuído.
+
+Como alternativa legada, configure `EMAIL_WEBHOOK_URL` no `.env` para conectar um provedor HTTP de email. O endpoint recebe:
 
 ```json
 { "to": "cliente@email.com", "subject": "Seu PIN de ativação — VendeFácil", "text": "Seu código de confirmação é 123456. Ele expira em 15 minutos." }
 ```
 
-Sem essa variável, o PIN fica disponível no log do container para desenvolvimento. Em produção, use um provedor de email transacional e mantenha o endpoint protegido.
+Sem MailerSend ou webhook configurado, o cadastro é recusado para evitar criar contas sem possibilidade de confirmação.
 
 ### Multiusuário
 

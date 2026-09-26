@@ -21,11 +21,35 @@ async function provisionRoutePasswords(workspaceId: string) {
   );
 }
 async function sendPinEmail(email: string, pin: string) {
-  const webhook = process.env["EMAIL_WEBHOOK_URL"];
   const subject = "Seu PIN de ativação — VendeFácil";
   const text = `Seu código de confirmação é ${pin}. Ele expira em 15 minutos.`;
-  if (webhook) await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: email, subject, text }) });
-  else console.info(`[VendeFácil] PIN de desenvolvimento para ${email}: ${pin}`);
+  const token = process.env["MAILERSEND_API_TOKEN"];
+  const fromEmail = process.env["MAILERSEND_FROM_EMAIL"];
+  const fromName = process.env["MAILERSEND_FROM_NAME"] || "VendeFácil";
+  if (!token || !fromEmail) {
+    const webhook = process.env["EMAIL_WEBHOOK_URL"];
+    if (webhook) {
+      await fetch(webhook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: email, subject, text }) });
+      return;
+    }
+    throw new Error("Email de cadastro não configurado. Defina MAILERSEND_API_TOKEN e MAILERSEND_FROM_EMAIL.");
+  }
+  const response = await fetch("https://api.mailersend.com/v1/email", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      from: { email: fromEmail, name: fromName },
+      to: [{ email }],
+      subject,
+      text,
+      html: `<div style="font-family:Arial,sans-serif"><h2>VendeFácil</h2><p>Seu PIN de confirmação é:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${pin}</p><p>Este código expira em 15 minutos.</p></div>`,
+    }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("MailerSend error", response.status, detail.slice(0, 500));
+    throw new Error("Não foi possível enviar o PIN por email. Verifique o remetente autorizado no MailerSend.");
+  }
 }
 
 export const registerAccount = createServerFn({ method: "POST" }).validator((data) => signupSchema.parse(data)).handler(async ({ data }) => {
@@ -41,7 +65,13 @@ export const registerAccount = createServerFn({ method: "POST" }).validator((dat
   );
   if (!user) throw new Error("Não foi possível criar o usuário");
   await provisionRoutePasswords(workspace.id);
-  await sendPinEmail(data.email, pin);
+  try {
+    await sendPinEmail(data.email, pin);
+  } catch (error) {
+    await q("delete from app_users where id=$1", [user.id]);
+    await q("delete from workspaces where id=$1", [workspace.id]);
+    throw error;
+  }
   return { ok: true as const };
 });
 
