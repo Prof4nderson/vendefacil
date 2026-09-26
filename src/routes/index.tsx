@@ -36,6 +36,7 @@ import {
   cancelSale,
   finalizeOpenSale,
   getOpenCustomerSales,
+  updateOpenSale,
   type SaleRow,
 } from "@/lib/sales.functions";
 import { openPosShift } from "@/lib/ops.functions";
@@ -189,6 +190,7 @@ function PosPage() {
   const loadOpenSales = useServerFn(getOpenCustomerSales);
   const cancelOpenSale = useServerFn(cancelSale);
   const finalizeSale = useServerFn(finalizeOpenSale);
+  const updateSale = useServerFn(updateOpenSale);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
@@ -240,6 +242,10 @@ function PosPage() {
   const [customerNameDraft, setCustomerNameDraft] = useState("");
   const [openCustomerSales, setOpenCustomerSales] = useState<SaleRow[]>([]);
   const [loadingCustomerSales, setLoadingCustomerSales] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const [editingItems, setEditingItems] = useState<
+    { product_id: string; name: string; qty: number; price: number | string }[]
+  >([]);
   const [showCustomize, setShowCustomize] = useState(false);
   const [fontScale, setFontScale] = useState(() =>
     typeof window !== "undefined"
@@ -355,6 +361,37 @@ function PosPage() {
       toast.success("Pedido cancelado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível cancelar");
+    }
+  }
+  function startEditingSale(sale: SaleRow) {
+    if (sale.items.some((item) => !item.product_id))
+      return toast.error("Aplique a migração do banco para editar este pedido");
+    setEditingSaleId(sale.id);
+    setEditingItems(
+      sale.items.map((item) => ({
+        product_id: item.product_id!,
+        name: item.name,
+        qty: item.qty,
+        price: item.price,
+      })),
+    );
+  }
+  async function saveEditingSale() {
+    if (!editingSaleId) return;
+    try {
+      await updateSale({
+        data: {
+          orderId: editingSaleId,
+          items: editingItems.map(({ product_id, qty }) => ({ product_id, qty })),
+        },
+      });
+      const customer = customers.find((c) => c.id === activeCustomer);
+      if (customer)
+        setOpenCustomerSales(await loadOpenSales({ data: { customerName: customer.name } }));
+      setEditingSaleId(null);
+      toast.success("Pedido atualizado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar");
     }
   }
   async function handleOpenShift() {
@@ -778,7 +815,56 @@ function PosPage() {
                       </p>
                     ))}
                   </div>
+                  {editingSaleId === sale.id && (
+                    <div className="mt-2 space-y-1 border-t border-border pt-2">
+                      {editingItems.map((item, index) => (
+                        <div
+                          key={item.product_id}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <span className="truncate">{item.name}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                setEditingItems((old) =>
+                                  old.map((x, i) =>
+                                    i === index ? { ...x, qty: Math.max(1, x.qty - 1) } : x,
+                                  ),
+                                )
+                              }
+                              className="rounded bg-secondary px-2 py-1"
+                            >
+                              −
+                            </button>
+                            <b>{item.qty}</b>
+                            <button
+                              onClick={() =>
+                                setEditingItems((old) =>
+                                  old.map((x, i) => (i === index ? { ...x, qty: x.qty + 1 } : x)),
+                                )
+                              }
+                              className="rounded bg-secondary px-2 py-1"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        onClick={saveEditingSale}
+                        className="neon-button mt-2 w-full rounded-lg py-1.5 text-xs font-bold"
+                      >
+                        Salvar alterações
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => startEditingSale(sale)}
+                      className="rounded-lg bg-secondary px-2 py-1.5 text-xs font-bold"
+                    >
+                      Editar
+                    </button>
                     <button
                       onClick={() => finishOpenSale(sale.id)}
                       className="neon-button flex-1 rounded-lg px-2 py-1.5 text-xs font-bold"

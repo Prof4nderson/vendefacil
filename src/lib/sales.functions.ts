@@ -15,7 +15,7 @@ export type SaleRow = {
   status: string;
   created_at: string;
   items_count: number;
-  items: { name: string; qty: number; price: number | string }[];
+  items: { product_id?: string; name: string; qty: number; price: number | string }[];
 };
 
 export const getSales = createServerFn({ method: "GET" }).handler(async () => {
@@ -24,7 +24,7 @@ export const getSales = createServerFn({ method: "GET" }).handler(async () => {
       `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
             o.payment_status, o.payment_method, o.status, o.created_at,
             coalesce(sum(i.qty), 0)::int as items_count,
-            coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
+            coalesce(json_agg(json_build_object('product_id', i.product_id, 'name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
      from orders o left join order_items i on i.order_id=o.id
      group by o.id order by o.created_at desc limit 200`,
     );
@@ -53,7 +53,7 @@ export const getOpenCustomerSales = createServerFn({ method: "GET" })
         `select o.id, o.order_number, o.customer_name, o.total, o.amount_paid, o.credit_amount,
                 o.payment_status, o.payment_method, o.status, o.created_at,
                 coalesce(sum(i.qty), 0)::int as items_count,
-                coalesce(json_agg(json_build_object('name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
+                coalesce(json_agg(json_build_object('product_id', i.product_id, 'name', i.name, 'qty', i.qty, 'price', i.price) order by i.name) filter (where i.id is not null), '[]'::json) as items
          from orders o left join order_items i on i.order_id=o.id
          where lower(o.customer_name)=lower($1) and o.status not in ('cancelled','served','delivered')
          group by o.id order by o.created_at asc`,
@@ -87,6 +87,70 @@ export const finalizeOpenSale = createServerFn({ method: "POST" })
     if (!rows.length) throw new Error("Pedido já finalizado ou não encontrado");
     return { ok: true as const };
   });
+
+export const updateOpenSale = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        orderId: z.string().uuid(),
+        items: z
+          .array(z.object({ product_id: z.string().uuid(), qty: z.number().int().min(1) }))
+          .min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) =>
+    tx(async (client) => {
+      const current = await client.query<{ status: string }>(
+        "select status from orders where id=$1 for update",
+        [data.orderId],
+      );
+      if (!current.rows[0] || ["cancelled", "served", "delivered"].includes(current.rows[0].status))
+        throw new Error("Este pedido não está aberto");
+      const oldItems = await client.query<{ product_id: string; qty: number }>(
+        "select product_id, qty from order_items where order_id=$1",
+        [data.orderId],
+      );
+      for (const item of oldItems.rows)
+        if (item.product_id)
+          await client.query("update products set stock=stock+$1 where id=$2", [
+            item.qty,
+            item.product_id,
+          ]);
+      const ids = data.items.map((item) => item.product_id);
+      const products = await client.query<{
+        id: string;
+        name: string;
+        price: number;
+        needs_kitchen: boolean;
+        stock: number;
+      }>(
+        "select id,name,price,needs_kitchen,stock from products where id=any($1::uuid[]) and available=true for update",
+        [ids],
+      );
+      if (products.rows.length !== ids.length) throw new Error("Produto indisponível");
+      let total = 0;
+      for (const item of data.items) {
+        const p = products.rows.find((x) => x.id === item.product_id)!;
+        if (p.stock < item.qty) throw new Error(`Estoque insuficiente: ${p.name}`);
+        total += Number(p.price) * item.qty;
+      }
+      await client.query("delete from order_items where order_id=$1", [data.orderId]);
+      for (const item of data.items) {
+        const p = products.rows.find((x) => x.id === item.product_id)!;
+        await client.query(
+          "insert into order_items (order_id,product_id,name,price,qty,needs_kitchen) values ($1,$2,$3,$4,$5,$6)",
+          [data.orderId, p.id, p.name, p.price, item.qty, p.needs_kitchen],
+        );
+        await client.query("update products set stock=stock-$1 where id=$2", [item.qty, p.id]);
+      }
+      await client.query(
+        "update orders set total=$1, amount_paid=least(amount_paid,$1), credit_amount=greatest(0,$1-amount_paid), updated_at=now() where id=$2",
+        [total, data.orderId],
+      );
+      return { ok: true as const, total };
+    }),
+  );
 
 export const cancelSale = createServerFn({ method: "POST" })
   .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
