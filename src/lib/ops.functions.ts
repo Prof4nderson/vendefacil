@@ -219,6 +219,41 @@ export const addCashEntry = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const updateCashEntry = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        amount: z.number().positive(),
+        description: z.string().min(2),
+        method: z.string().optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireRole("caixa");
+    const { q } = await import("./db.server");
+    const rows = await q<{ id: string }>(
+      "update cash_entries set amount=$1, description=$2, method=$3 where id=$4 and order_id is null returning id",
+      [data.amount, data.description, data.method || null, data.id],
+    );
+    if (!rows.length) throw new Error("Lançamento não pode ser alterado");
+    return { ok: true as const };
+  });
+
+export const deleteCashEntry = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ id: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    await requireRole("caixa");
+    const { q } = await import("./db.server");
+    const rows = await q<{ id: string }>(
+      "delete from cash_entries where id=$1 and order_id is null returning id",
+      [data.id],
+    );
+    if (!rows.length) throw new Error("Lançamentos vinculados a vendas não podem ser excluídos");
+    return { ok: true as const };
+  });
+
 export const closeShift = createServerFn({ method: "POST" })
   .validator((data) => z.object({ notes: z.string().optional() }).parse(data))
   .handler(async ({ data }) => {

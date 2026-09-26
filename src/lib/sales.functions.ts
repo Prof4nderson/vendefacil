@@ -280,24 +280,35 @@ export const cancelSale = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    return tx(async (client) => {
-      const result = await client.query<{ id: string }>(
-        "update orders set status='cancelled', cancellation_note=$2, updated_at=now() where id=$1 and status <> 'cancelled' returning id",
-        [data.orderId, data.observation?.trim() || null],
-      );
-      if (!result.rows[0]) throw new Error("Venda já cancelada ou não encontrada");
-      await client.query("update cash_entries set voided=true where order_id=$1", [data.orderId]);
-      await client.query(
-        `update products p set stock=p.stock+i.qty from order_items i where i.order_id=$1 and i.product_id=p.id`,
-        [data.orderId],
-      );
-      await client.query(
-        `update customers c set credit_balance=greatest(0, c.credit_balance-o.credit_amount), updated_at=now()
+    const cancelInDatabase = (withNote: boolean) =>
+      tx(async (client) => {
+        const result = await client.query<{ id: string }>(
+          withNote
+            ? "update orders set status='cancelled', cancellation_note=$2, updated_at=now() where id=$1 and status <> 'cancelled' returning id"
+            : "update orders set status='cancelled', updated_at=now() where id=$1 and status <> 'cancelled' returning id",
+          withNote ? [data.orderId, data.observation?.trim() || null] : [data.orderId],
+        );
+        if (!result.rows[0]) throw new Error("Venda já cancelada ou não encontrada");
+        await client.query("update cash_entries set voided=true where order_id=$1", [data.orderId]);
+        await client.query(
+          `update products p set stock=p.stock+i.qty from order_items i where i.order_id=$1 and i.product_id=p.id`,
+          [data.orderId],
+        );
+        await client.query(
+          `update customers c set credit_balance=greatest(0, c.credit_balance-o.credit_amount), updated_at=now()
          from orders o where o.id=$1 and o.customer_id=c.id and o.credit_amount>0`,
-        [data.orderId],
-      );
-      return { ok: true as const };
-    });
+          [data.orderId],
+        );
+        return { ok: true as const };
+      });
+    try {
+      return await cancelInDatabase(true);
+    } catch (error) {
+      if (error instanceof Error && /cancellation_note|does not exist/i.test(error.message)) {
+        return cancelInDatabase(false);
+      }
+      throw error;
+    }
   });
 
 export const deleteSaleAdmin = createServerFn({ method: "POST" })

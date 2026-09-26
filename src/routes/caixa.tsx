@@ -2,13 +2,27 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Wallet, TrendingUp, TrendingDown, DoorOpen, DoorClosed } from "lucide-react";
+import {
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  DoorOpen,
+  DoorClosed,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { OpsGate, useOpsQuery, hasOpsAccess } from "@/components/ops-gate";
 import { getOpsSessionInfo } from "@/lib/gate.functions";
-import { getCashierData, openShift, addCashEntry, closeShift } from "@/lib/ops.functions";
+import {
+  getCashierData,
+  openShift,
+  addCashEntry,
+  updateCashEntry,
+  deleteCashEntry,
+  closeShift,
+} from "@/lib/ops.functions";
 import { brl, PAYMENT_METHODS } from "@/lib/format";
-
 
 export const Route = createFileRoute("/caixa")({
   loader: () => getOpsSessionInfo(),
@@ -43,6 +57,8 @@ function CashierPage() {
   const fetchData = useServerFn(getCashierData);
   const open = useServerFn(openShift);
   const addEntry = useServerFn(addCashEntry);
+  const editEntry = useServerFn(updateCashEntry);
+  const removeEntry = useServerFn(deleteCashEntry);
   const close = useServerFn(closeShift);
 
   const { data } = useOpsQuery(["cashier"], fetchData, 5000, hasOpsAccess(session, "caixa"));
@@ -52,12 +68,18 @@ function CashierPage() {
   const [method, setMethod] = useState(PAYMENT_METHODS[0]);
   const [description, setDescription] = useState("");
   const [report, setReport] = useState<Report | null>(null);
-
+  const [editingEntry, setEditingEntry] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   const shift = data?.shift ?? null;
   const entries = data?.entries ?? [];
-  const income = entries.filter((e) => e.type === "income").reduce((s, e) => s + Number(e.amount), 0);
-  const expense = entries.filter((e) => e.type === "expense").reduce((s, e) => s + Number(e.amount), 0);
+  const income = entries
+    .filter((e) => e.type === "income")
+    .reduce((s, e) => s + Number(e.amount), 0);
+  const expense = entries
+    .filter((e) => e.type === "expense")
+    .reduce((s, e) => s + Number(e.amount), 0);
 
   async function handleOpen() {
     try {
@@ -71,11 +93,22 @@ function CashierPage() {
 
   async function handleEntry() {
     const value = Number(amount.replace(",", "."));
-    if (!value || value <= 0) { toast.error("Informe um valor"); return; }
-    if (!description.trim()) { toast.error("Informe a descrição"); return; }
+    if (!value || value <= 0) {
+      toast.error("Informe um valor");
+      return;
+    }
+    if (!description.trim()) {
+      toast.error("Informe a descrição");
+      return;
+    }
     try {
       await addEntry({
-        data: { type: entryType, amount: value, description, method: entryType === "income" ? method : undefined },
+        data: {
+          type: entryType,
+          amount: value,
+          description,
+          method: entryType === "income" ? method : undefined,
+        },
       });
       toast.success("Lançamento registrado");
       setAmount("");
@@ -96,6 +129,38 @@ function CashierPage() {
       toast.error(e instanceof Error ? e.message : "Erro");
     }
   }
+  async function handleEdit(entry: {
+    id: string;
+    amount: number;
+    description: string;
+    method?: string | null;
+  }) {
+    try {
+      await editEntry({
+        data: {
+          id: entry.id,
+          amount: Number(editAmount.replace(",", ".")),
+          description: editDescription,
+          method: entry.method ?? undefined,
+        },
+      });
+      setEditingEntry(null);
+      queryClient.invalidateQueries({ queryKey: ["cashier"] });
+      toast.success("Lançamento alterado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível alterar");
+    }
+  }
+  async function handleDelete(id: string) {
+    if (!window.confirm("Excluir este lançamento?")) return;
+    try {
+      await removeEntry({ data: { id } });
+      queryClient.invalidateQueries({ queryKey: ["cashier"] });
+      toast.success("Lançamento excluído");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir");
+    }
+  }
 
   return (
     <OpsGate role="caixa" title="Caixa" session={session}>
@@ -110,7 +175,9 @@ function CashierPage() {
             <h2 className="font-display flex items-center gap-2 text-lg font-semibold">
               <DoorOpen className="h-5 w-5 text-primary" /> Abrir turno
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">Informe o valor inicial em caixa (fundo de troco)</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Informe o valor inicial em caixa (fundo de troco)
+            </p>
             <input
               value={opening}
               onChange={(e) => setOpening(e.target.value)}
@@ -118,7 +185,10 @@ function CashierPage() {
               placeholder="0,00"
               className="mt-4 w-full rounded-xl border border-input bg-background px-4 py-3"
             />
-            <button onClick={handleOpen} className="mt-4 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground">
+            <button
+              onClick={handleOpen}
+              className="mt-4 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground"
+            >
               Abrir turno
             </button>
           </div>
@@ -135,7 +205,9 @@ function CashierPage() {
               </div>
               <div className="rounded-2xl border border-border bg-card p-3 text-center">
                 <p className="text-xs text-muted-foreground">Saldo</p>
-                <p className="mt-1 text-sm font-bold">{brl(Number(shift.opening_amount) + income - expense)}</p>
+                <p className="mt-1 text-sm font-bold">
+                  {brl(Number(shift.opening_amount) + income - expense)}
+                </p>
               </div>
             </div>
 
@@ -181,7 +253,10 @@ function CashierPage() {
                   ))}
                 </div>
               )}
-              <button onClick={handleEntry} className="mt-4 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground">
+              <button
+                onClick={handleEntry}
+                className="mt-4 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground"
+              >
                 Registrar
               </button>
             </div>
@@ -196,20 +271,88 @@ function CashierPage() {
                 </p>
               )}
               {entries.map((e) => (
-                <div key={e.id} className="flex items-center justify-between rounded-2xl border border-border bg-card p-3">
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between rounded-2xl border border-border bg-card p-3"
+                >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{e.description}</p>
                     <p className="text-xs text-muted-foreground">
                       {e.method ?? (e.type === "expense" ? "Despesa" : "Receita")} •{" "}
-                      {new Date(e.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(e.created_at).toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </div>
-                  <span className={`text-sm font-bold ${e.type === "income" ? "text-primary" : "text-destructive"}`}>
-                    {e.type === "income" ? "+" : "−"}{brl(e.amount)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-sm font-bold ${e.type === "income" ? "text-primary" : "text-destructive"}`}
+                    >
+                      {e.type === "income" ? "+" : "−"}
+                      {brl(e.amount)}
+                    </span>
+                    {!e.order_id && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingEntry(e.id);
+                            setEditAmount(String(e.amount));
+                            setEditDescription(e.description);
+                          }}
+                          className="rounded-lg bg-secondary p-2"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          className="rounded-lg bg-red-400/10 p-2 text-red-300"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
+            {editingEntry && (
+              <div className="mt-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
+                <p className="text-sm font-bold">Alterar lançamento</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <input
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    inputMode="decimal"
+                    className="rounded-xl border border-input bg-background px-3 py-2"
+                    placeholder="Valor"
+                  />
+                  <input
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="rounded-xl border border-input bg-background px-3 py-2"
+                    placeholder="Descrição"
+                  />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setEditingEntry(null)}
+                    className="flex-1 rounded-xl border border-border py-2 text-sm font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const entry = entries.find((x) => x.id === editingEntry);
+                      if (entry) void handleEdit(entry);
+                    }}
+                    className="flex-1 rounded-xl bg-primary py-2 text-sm font-bold text-primary-foreground"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleClose}
@@ -221,30 +364,59 @@ function CashierPage() {
         )}
 
         {report && (
-          <div className="fixed inset-0 z-40 flex flex-col justify-end bg-scrim" onClick={() => setReport(null)}>
-            <div className="max-h-[90vh] overflow-y-auto rounded-t-3xl bg-background p-5" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="fixed inset-0 z-40 flex flex-col justify-end bg-scrim"
+            onClick={() => setReport(null)}
+          >
+            <div
+              className="max-h-[90vh] overflow-y-auto rounded-t-3xl bg-background p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
               <h2 className="font-display text-xl font-bold">Relatório do turno</h2>
               <p className="text-xs text-muted-foreground">
-                {new Date(report.opened_at).toLocaleString("pt-BR")} → {new Date(report.closed_at).toLocaleString("pt-BR")}
+                {new Date(report.opened_at).toLocaleString("pt-BR")} →{" "}
+                {new Date(report.closed_at).toLocaleString("pt-BR")}
               </p>
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span>Fundo inicial</span><span className="font-medium">{brl(report.opening_amount)}</span></div>
-                <div className="flex justify-between"><span>Pedidos ({report.orders_count})</span><span className="font-medium">{brl(report.orders_total)}</span></div>
-                <div className="flex justify-between"><span>Total de entradas</span><span className="font-bold text-primary">{brl(report.total_income)}</span></div>
-                <div className="flex justify-between"><span>Total de saídas</span><span className="font-bold text-destructive">{brl(report.total_expense)}</span></div>
+                <div className="flex justify-between">
+                  <span>Fundo inicial</span>
+                  <span className="font-medium">{brl(report.opening_amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Pedidos ({report.orders_count})</span>
+                  <span className="font-medium">{brl(report.orders_total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total de entradas</span>
+                  <span className="font-bold text-primary">{brl(report.total_income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total de saídas</span>
+                  <span className="font-bold text-destructive">{brl(report.total_expense)}</span>
+                </div>
                 <div className="flex justify-between border-t border-border pt-2 font-bold">
                   <span>Saldo final</span>
-                  <span>{brl(report.opening_amount + report.total_income - report.total_expense)}</span>
+                  <span>
+                    {brl(report.opening_amount + report.total_income - report.total_expense)}
+                  </span>
                 </div>
               </div>
               <h3 className="mt-4 text-sm font-semibold">Por meio de pagamento</h3>
               <div className="mt-2 space-y-1 text-sm">
                 {Object.entries(report.by_method).map(([m, v]) => (
-                  <div key={m} className="flex justify-between"><span>{m}</span><span className="font-medium">{brl(v)}</span></div>
+                  <div key={m} className="flex justify-between">
+                    <span>{m}</span>
+                    <span className="font-medium">{brl(v)}</span>
+                  </div>
                 ))}
-                {Object.keys(report.by_method).length === 0 && <p className="text-muted-foreground">Sem receitas no turno.</p>}
+                {Object.keys(report.by_method).length === 0 && (
+                  <p className="text-muted-foreground">Sem receitas no turno.</p>
+                )}
               </div>
-              <button onClick={() => setReport(null)} className="mt-5 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground">
+              <button
+                onClick={() => setReport(null)}
+                className="mt-5 w-full rounded-2xl bg-primary py-3.5 font-semibold text-primary-foreground"
+              >
                 Fechar
               </button>
             </div>

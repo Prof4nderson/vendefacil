@@ -941,7 +941,11 @@ function PosPage() {
               </span>
               <button
                 className="ml-auto text-xs font-bold text-amber-300"
-                onClick={() => toast.info("Abra Admin → Produtos para repor o estoque")}
+                onClick={() =>
+                  document
+                    .getElementById("produtos")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
               >
                 Ver estoque
               </button>
@@ -1277,6 +1281,16 @@ function PosPage() {
         className="fixed bottom-5 left-5 z-30 grid h-12 w-12 place-items-center rounded-full border border-primary/40 bg-background/90 text-primary shadow-2xl backdrop-blur"
       >
         <ArrowUp className="h-5 w-5" />
+      </button>
+      <button
+        onClick={openSale}
+        disabled={opening}
+        className="neon-button fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black shadow-2xl"
+      >
+        <ShoppingCart className="h-5 w-5" /> Vender
+        {count > 0 && (
+          <span className="rounded-full bg-background/30 px-2 py-0.5 text-xs">{count}</span>
+        )}
       </button>
       <DeveloperBadge />
       {showProfile && (
