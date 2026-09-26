@@ -88,6 +88,21 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "create table if not exists catalog_suggestions (id uuid primary key default gen_random_uuid(), category_name text not null, name text not null, description text, suggested_purchase_price numeric(10,2) not null default 0, suggested_price numeric(10,2) not null default 0, icon text not null default 'Package', active boolean not null default true, created_at timestamptz not null default now(), unique(category_name,name))",
     );
+    await client.query(`insert into catalog_suggestions
+      (category_name,name,description,suggested_purchase_price,suggested_price,icon) values
+      ('Pratos quentes','Feijoada completa','Feijoada tradicional com arroz, couve e farofa',14.80,32.90,'🍲'),
+      ('Pratos quentes','Strogonoff de frango','Com arroz branco e batata palha',13.00,28.90,'🍛'),
+      ('Pratos quentes','Escondidinho de carne','Purê de mandioca com carne seca gratinada',13.50,29.90,'🍽️'),
+      ('Pratos quentes','Frango grelhado com legumes','Peito de frango, arroz integral e legumes',12.10,26.90,'🍗'),
+      ('Pratos quentes','Lasanha à bolonhesa','Lasanha caseira com queijo gratinado',13.90,30.90,'🍝'),
+      ('Lanches','X-Burguer','Pão, hambúrguer, queijo, alface e tomate',8.50,18.90,'🍔'),
+      ('Sobremesas','Pudim de leite','Pudim caseiro com calda de caramelo',4.00,8.90,'🍮'),
+      ('Sobremesas','Brownie com sorvete','Brownie de chocolate com bola de sorvete',6.70,14.90,'🍨'),
+      ('Bebidas','Suco natural 500ml','Laranja, maracujá ou manga',4.05,9.00,'🧃'),
+      ('Bebidas','Água mineral 500ml','Com ou sem gás',1.80,4.00,'💧'),
+      ('Outros','Molho extra da casa','Molho especial 50ml',1.10,2.50,'🥣'),
+      ('Outros','Embalagem para viagem','Marmita térmica descartável',1.35,3.00,'📦')
+      on conflict (category_name,name) do nothing`);
     await client.query(
       "alter table products add column if not exists purchase_price numeric(10,2) not null default 0",
     );

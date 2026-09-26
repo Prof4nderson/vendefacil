@@ -29,6 +29,15 @@ export const registerAccount = createServerFn({ method: "POST" }).validator((dat
     [workspace.id, data.name.trim(), data.login.trim(), hash(data.password), data.whatsapp.trim(), data.email.trim().toLowerCase(), hash(pin)],
   );
   if (!user) throw new Error("Não foi possível criar o usuário");
+  await q(
+    `insert into route_passwords (workspace_id, route, password_hash) values
+      ($1,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+      ($1,'cozinha','50263d56d9e862db1767204ed2fc5c264cfe2abfbd39b0bb3a7bd25ee78dbbe9'),
+      ($1,'entrega','0dc492621a834e51988b6840f9e1b0f095847deaf93b7543c16429e11644dcfd'),
+      ($1,'caixa','59c7c57e6516f4a4ae85214acbd322b724cb755806c4183587a5007c9ca3af23')
+     on conflict (workspace_id, route) do nothing`,
+    [workspace.id],
+  );
   await sendPinEmail(data.email, pin);
   return { ok: true as const };
 });
