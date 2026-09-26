@@ -227,6 +227,8 @@ function PosPage() {
       typeof window !== "undefined" && window.localStorage.getItem("vendefacil-shift-open") === "1",
   );
   const [creditAmount, setCreditAmount] = useState(0);
+  const [showSaleCustomer, setShowSaleCustomer] = useState(false);
+  const [customerNameDraft, setCustomerNameDraft] = useState("");
 
   const visible = useMemo(
     () =>
@@ -276,6 +278,27 @@ function PosPage() {
     ]);
     setActiveCustomer(id);
     setCart({});
+  }
+  function openSale() {
+    setCustomerNameDraft("");
+    setShowSaleCustomer(true);
+  }
+  function selectSaleCustomer(customer: Customer) {
+    setActiveCustomer(customer.id);
+    setCart({});
+    setShowSaleCustomer(false);
+  }
+  function addNamedCustomer() {
+    const name = customerNameDraft.trim();
+    if (!name) return toast.error("Informe o nome do cliente");
+    const id = `c-${Date.now()}`;
+    setCustomers((old) => [
+      ...old,
+      { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 },
+    ]);
+    setActiveCustomer(id);
+    setCart({});
+    setShowSaleCustomer(false);
   }
   async function handleOpenShift() {
     try {
@@ -434,6 +457,14 @@ function PosPage() {
               </button>
               <button
                 onClick={() => {
+                  window.location.href = "/vendas";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <WalletCards className="h-4 w-4 text-primary" /> Ver vendas
+              </button>
+              <button
+                onClick={() => {
                   newCustomer();
                   setShowMenu(false);
                 }}
@@ -481,15 +512,8 @@ function PosPage() {
               </h2>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="rounded-xl"
-                onClick={() => toast.info("Importação CSV disponível no painel Admin")}
-              >
-                <Package className="mr-2 h-4 w-4" /> Importar CSV
-              </Button>
-              <Button className="neon-button rounded-xl" onClick={newCustomer}>
-                <Plus className="mr-2 h-4 w-4" /> Nova mesa
+              <Button className="neon-button rounded-xl" onClick={openSale}>
+                <ShoppingCart className="mr-2 h-4 w-4" /> Vender
               </Button>
             </div>
           </div>
@@ -733,6 +757,55 @@ function PosPage() {
           </div>
         </aside>
       </main>
+      {showSaleCustomer && (
+        <div
+          className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowSaleCustomer(false)}
+        >
+          <div
+            className="glass-card w-full max-w-md rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Nova venda</p>
+                <h2 className="font-display text-2xl font-bold">Selecionar cliente</h2>
+              </div>
+              <button onClick={() => setShowSaleCustomer(false)}>
+                <X />
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {customers.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => selectSaleCustomer(c)}
+                  className={`flex w-full items-center justify-between rounded-xl p-3 text-left ${c.id === activeCustomer ? "bg-primary/15 ring-1 ring-primary/40" : "bg-secondary/60"}`}
+                >
+                  <span className="text-sm font-bold">{c.name}</span>
+                  {c.credit > 0 && (
+                    <span className="text-xs font-bold text-amber-300">Fiado {brl(c.credit)}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="text-xs font-bold text-muted-foreground">Ou incluir cliente</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={customerNameDraft}
+                  onChange={(e) => setCustomerNameDraft(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm"
+                />
+                <Button onClick={addNamedCustomer} className="neon-button rounded-xl">
+                  <UserPlus className="mr-1 h-4 w-4" /> Incluir
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showShift && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"

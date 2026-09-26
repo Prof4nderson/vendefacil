@@ -254,3 +254,8 @@ insert into catalog_suggestions (category_name, name, description, suggested_pur
   ('Doces','Brownie da casa','Chocolate intenso',4.00,9.90,'🍪'),
   ('Lanches','Misto quente','Presunto e queijo na chapa',4.50,9.90,'🥪')
 on conflict (category_name, name) do nothing;
+
+
+-- ============ Vendas administráveis ============
+alter table cash_entries add column if not exists voided boolean not null default false;
+create index if not exists orders_cancelled_idx on orders(status, created_at desc);

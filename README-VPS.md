@@ -201,3 +201,19 @@ Como o PostgreSQL mantém volume persistente, o script inicial do Docker não ro
 docker compose exec -T postgres psql -U delivery -d delivery < db/migrations/20260926_vendefacil_sales.sql
 docker compose up -d --build --force-recreate app
 ```
+
+## 9. Vender e Ver vendas
+
+- A tela principal usa o botão **Vender** para selecionar um cliente existente ou incluir um novo.
+- Os itens podem ser acumulados no consumo e são enviados juntos ao finalizar.
+- **Ver vendas** fica no menu superior e mostra vendas em aberto, finalizadas e canceladas.
+- Uma venda pode ser cancelada sem considerar seu valor no faturamento; o estoque é devolvido e o lançamento financeiro é anulado.
+- A exclusão física só é permitida para uma venda cancelada e exige a senha do Admin.
+- Vendas canceladas continuam aparecendo no relatório detalhado do turno.
+
+Para bancos já existentes, aplique também:
+
+```bash
+docker compose exec -T postgres psql -U delivery -d delivery < db/migrations/20260926_sales_admin.sql
+docker compose up -d --build --force-recreate app
+```

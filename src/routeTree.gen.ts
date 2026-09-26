@@ -17,6 +17,7 @@ import { Route as EntregaRouteImport } from './routes/entrega'
 import { Route as FavoritosRouteImport } from './routes/favoritos'
 import { Route as OfertasRouteImport } from './routes/ofertas'
 import { Route as PedidosRouteImport } from './routes/pedidos'
+import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as PedidoIdRouteImport } from './routes/pedido.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const PedidosRoute = PedidosRouteImport.update({
   path: '/pedidos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VendasRoute = VendasRouteImport.update({
+  id: '/vendas',
+  path: '/vendas',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PedidoIdRoute = PedidoIdRouteImport.update({
   id: '/pedido/$id',
   path: '/pedido/$id',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/favoritos': typeof FavoritosRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
+  '/vendas': typeof VendasRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/vendas'
     | '/pedido/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/vendas'
     | '/pedido/$id'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/favoritos'
     | '/ofertas'
     | '/pedidos'
+    | '/vendas'
     | '/pedido/$id'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   FavoritosRoute: typeof FavoritosRoute
   OfertasRoute: typeof OfertasRoute
   PedidosRoute: typeof PedidosRoute
+  VendasRoute: typeof VendasRoute
   PedidoIdRoute: typeof PedidoIdRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PedidosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vendas': {
+      id: '/vendas'
+      path: '/vendas'
+      fullPath: '/vendas'
+      preLoaderRoute: typeof VendasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pedido/$id': {
       id: '/pedido/$id'
       path: '/pedido/$id'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   FavoritosRoute: FavoritosRoute,
   OfertasRoute: OfertasRoute,
   PedidosRoute: PedidosRoute,
+  VendasRoute: VendasRoute,
   PedidoIdRoute: PedidoIdRoute,
 }
 export const routeTree = rootRouteImport

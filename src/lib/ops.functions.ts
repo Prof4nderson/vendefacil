@@ -51,6 +51,7 @@ export const setOrderStatus = createServerFn({ method: "POST" })
            where i.order_id = $1 and i.product_id = p.id`,
           [data.orderId],
         );
+        await client.query("update cash_entries set voided=true where order_id=$1", [data.orderId]);
       }
     });
     return { ok: true as const };
@@ -228,9 +229,10 @@ export const closeShift = createServerFn({ method: "POST" })
     );
     if (!shift) throw new Error("Nenhum turno aberto");
 
-    const entries = await q<CashEntryRow>("select * from cash_entries where shift_id = $1", [
-      shift.id,
-    ]);
+    const entries = await q<CashEntryRow>(
+      "select * from cash_entries where shift_id = $1 and voided = false",
+      [shift.id],
+    );
     const orders = await q<{
       id: string;
       order_number: number;
@@ -242,7 +244,7 @@ export const closeShift = createServerFn({ method: "POST" })
     }>(
       `select id, order_number, customer_name, total, payment_method, order_type, status
        from orders
-       where created_at >= $1 and status <> 'cancelled'
+       where created_at >= $1
        order by order_number`,
       [shift.opened_at],
     );
@@ -262,7 +264,9 @@ export const closeShift = createServerFn({ method: "POST" })
       total_expense: expenses.reduce((s, e) => s + Number(e.amount), 0),
       by_method: byMethod,
       orders_count: orders.length,
-      orders_total: orders.reduce((s, o) => s + Number(o.total), 0),
+      orders_total: orders
+        .filter((o) => o.status !== "cancelled")
+        .reduce((s, o) => s + Number(o.total), 0),
       orders,
     };
 
