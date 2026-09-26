@@ -215,7 +215,7 @@ function PosPage() {
     ...savedCustomers.map((c) => ({
       id: c.id,
       name: c.name,
-      note: c.phone || "Cliente cadastrado",
+      note: c.phone && !/^0+$/.test(c.phone.replace(/\D/g, "")) ? c.phone : "Cliente cadastrado",
       total: 0,
       items: 0,
       credit: Number(c.credit_balance),
@@ -311,7 +311,15 @@ function PosPage() {
     .filter((x) => x.product);
   const total = cartItems.reduce((sum, item) => sum + Number(item.product.price) * item.qty, 0);
   const count = cartItems.reduce((sum, item) => sum + item.qty, 0);
-  const currentCustomer = customers.find((c) => c.id === activeCustomer)!;
+  const currentCustomer = customers.find((c) => c.id === activeCustomer) ??
+    customers[0] ?? {
+      id: "consumer",
+      name: "Consumidor",
+      note: "Venda sem identificação",
+      total: 0,
+      items: 0,
+      credit: 0,
+    };
   const openOrdersTotal = openCustomerSales.reduce((sum, sale) => sum + Number(sale.total), 0);
   const totalDue = total + openOrdersTotal + Number(currentCustomer.credit);
   const lowStock = products.filter((p) => Number(p.stock) <= Number(p.min_stock ?? 5));
@@ -423,6 +431,7 @@ function PosPage() {
         setCustomers((old) =>
           old.map((c) => (c.id === activeCustomer ? { ...c, total: 0, items: 0, credit: 0 } : c)),
         );
+        setActiveCustomer("consumer");
         setShowCustomerPanel(false);
       }
       toast.success("Pedido finalizado");
@@ -568,6 +577,7 @@ function PosPage() {
       setCustomers((old) =>
         old.map((c) => (c.id === activeCustomer ? { ...c, total: 0, items: 0, credit: 0 } : c)),
       );
+      setActiveCustomer("consumer");
       setShowCustomerPanel(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar a venda");
