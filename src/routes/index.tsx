@@ -201,6 +201,7 @@ function PosPage() {
   const checkSchema = useServerFn(verifySalesSchema);
   const migrateSchema = useServerFn(migrateSalesSchema);
   const [query, setQuery] = useState("");
+  const [productView, setProductView] = useState<"cards" | "list">("cards");
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
   const [customers, setCustomers] = useState<Customer[]>([
@@ -248,6 +249,7 @@ function PosPage() {
   );
   const [creditAmount, setCreditAmount] = useState(0);
   const [showSaleCustomer, setShowSaleCustomer] = useState(false);
+  const [selectingSaleCustomer, setSelectingSaleCustomer] = useState(false);
   const [selectingFinalizationCustomer, setSelectingFinalizationCustomer] = useState(false);
   const [customerNameDraft, setCustomerNameDraft] = useState("");
   const [openCustomerSales, setOpenCustomerSales] = useState<SaleRow[]>([]);
@@ -356,37 +358,50 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
   }
+  async function saveOpenOrder(customer: Customer) {
+    if (!cartItems.length) return;
+    setOpening(true);
+    try {
+      await submitOrder({
+        data: {
+          customer_name: customer.name,
+          customer_phone: "000000000",
+          order_type: "dine_in",
+          payment_method: "Pendente",
+          save_open: true,
+          items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
+        },
+      });
+      setCart({});
+      toast.success(`Pedido de ${customer.name} salvo em aberto`);
+      await inspectCustomer(customer);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível salvar o pedido");
+    } finally {
+      setOpening(false);
+    }
+  }
   async function openSale() {
     if (cartItems.length) {
-      setOpening(true);
-      try {
-        await submitOrder({
-          data: {
-            customer_name: currentCustomer.name,
-            customer_phone: "000000000",
-            order_type: "dine_in",
-            payment_method: "Pendente",
-            save_open: true,
-            items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
-          },
-        });
-        setCart({});
-        toast.success(`Pedido de ${currentCustomer.name} salvo em aberto`);
-        await inspectCustomer(currentCustomer);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Não foi possível salvar o pedido");
-      } finally {
-        setOpening(false);
-      }
+      setSelectingSaleCustomer(true);
+      setCustomerNameDraft("");
+      setShowSaleCustomer(true);
       return;
     }
+    setSelectingSaleCustomer(false);
     setCustomerNameDraft("");
     setShowSaleCustomer(true);
   }
   async function selectSaleCustomer(customer: Customer) {
+    const saveAfterSelection = selectingSaleCustomer;
     setActiveCustomer(customer.id);
-    setCart({});
+    setSelectingSaleCustomer(false);
     setShowSaleCustomer(false);
+    if (saveAfterSelection) {
+      await saveOpenOrder(customer);
+      return;
+    }
+    setCart({});
     await inspectCustomer(customer);
     if (selectingFinalizationCustomer) {
       setSelectingFinalizationCustomer(false);
@@ -401,10 +416,17 @@ function PosPage() {
       ...old,
       { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 },
     ]);
+    const saveAfterSelection = selectingSaleCustomer;
     setActiveCustomer(id);
-    setCart({});
+    setSelectingSaleCustomer(false);
     setShowSaleCustomer(false);
-    await inspectCustomer({ id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 });
+    const customer = { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 };
+    if (saveAfterSelection) {
+      await saveOpenOrder(customer);
+      return;
+    }
+    setCart({});
+    await inspectCustomer(customer);
     if (selectingFinalizationCustomer) {
       setSelectingFinalizationCustomer(false);
       setShowPayment(true);
@@ -639,6 +661,18 @@ function PosPage() {
           </div>
           <Button
             variant="ghost"
+            size="sm"
+            onClick={() =>
+              document
+                .getElementById("atendimento")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            className="flex gap-1.5 px-2 text-xs font-bold"
+          >
+            <Users className="h-4 w-4 text-primary" /> Atendimento
+          </Button>
+          <Button
+            variant="ghost"
             size="icon"
             onClick={() => setShowAuth(authenticated ? "login" : "signup")}
             aria-label="Conta"
@@ -797,6 +831,20 @@ function PosPage() {
                 {c.name}
               </button>
             ))}
+            <div className="ml-auto flex rounded-xl bg-secondary p-1">
+              <button
+                onClick={() => setProductView("cards")}
+                className={`rounded-lg px-3 py-2 text-xs font-bold ${productView === "cards" ? "bg-primary text-primary-foreground" : ""}`}
+              >
+                Cards
+              </button>
+              <button
+                onClick={() => setProductView("list")}
+                className={`rounded-lg px-3 py-2 text-xs font-bold ${productView === "list" ? "bg-primary text-primary-foreground" : ""}`}
+              >
+                Lista
+              </button>
+            </div>
           </div>
           {lowStock.length > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm">
@@ -817,16 +865,24 @@ function PosPage() {
               </button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          <div
+            className={
+              productView === "cards"
+                ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4"
+                : "space-y-2"
+            }
+          >
             {visible.map((p) => {
               const qty = cart[p.id] ?? 0;
               const isLow = Number(p.stock) <= Number(p.min_stock ?? 5);
               return (
                 <article
                   key={p.id}
-                  className="glass-card flex min-h-[205px] flex-col rounded-2xl p-2 transition-transform hover:-translate-y-0.5"
+                  className={`glass-card rounded-2xl p-2 transition-transform hover:-translate-y-0.5 ${productView === "cards" ? "flex min-h-[205px] flex-col" : "flex items-center gap-3"}`}
                 >
-                  <div className="relative aspect-[1.5] overflow-hidden rounded-xl bg-secondary">
+                  <div
+                    className={`relative overflow-hidden rounded-xl bg-secondary ${productView === "cards" ? "aspect-[1.5]" : "h-16 w-16 shrink-0"}`}
+                  >
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />
                     ) : (
@@ -884,7 +940,7 @@ function PosPage() {
             })}
           </div>
         </section>
-        <aside className="space-y-4">
+        <aside id="atendimento" className="scroll-mt-24 space-y-4">
           <div className="glass-card rounded-[1.5rem] p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
