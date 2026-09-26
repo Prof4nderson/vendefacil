@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { passwordMatches } from "./gate.server";
 import { q, q1, tx } from "./db.server";
+import { canUsePreviewFallback } from "./preview-fallback.server";
 
 export type SaleRow = {
   id: string;
@@ -126,7 +127,7 @@ export const finalizeOpenSale = createServerFn({ method: "POST" })
         return { ok: true as const, paid: due };
       });
     } catch (error) {
-      if (error instanceof Error && !error.message.includes("Pedido já finalizado")) {
+      if (canUsePreviewFallback(error)) {
         const { finalizeFallbackOrder } = await import("./fallback-store.server");
         return finalizeFallbackOrder(data.orderId);
       }
