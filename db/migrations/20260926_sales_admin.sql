@@ -1,5 +1,11 @@
 -- Migração consolidada para bancos existentes do VendeFácil.
 create extension if not exists pgcrypto;
+alter table app_users add column if not exists address text;
+alter table app_users add column if not exists cpf_cnpj text;
+alter table app_users add column if not exists cep text;
+alter table app_users add column if not exists city text;
+alter table app_users add column if not exists state text;
+alter table orders add column if not exists cancellation_note text;
 
 create table if not exists workspaces (
   id uuid primary key default gen_random_uuid(), name text not null,

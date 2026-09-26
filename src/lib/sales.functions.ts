@@ -274,12 +274,16 @@ export const updateOpenSale = createServerFn({ method: "POST" })
   );
 
 export const cancelSale = createServerFn({ method: "POST" })
-  .validator((data) => z.object({ orderId: z.string().uuid() }).parse(data))
+  .validator((data) =>
+    z
+      .object({ orderId: z.string().uuid(), observation: z.string().max(500).optional() })
+      .parse(data),
+  )
   .handler(async ({ data }) => {
     return tx(async (client) => {
       const result = await client.query<{ id: string }>(
-        "update orders set status='cancelled', updated_at=now() where id=$1 and status <> 'cancelled' returning id",
-        [data.orderId],
+        "update orders set status='cancelled', cancellation_note=$2, updated_at=now() where id=$1 and status <> 'cancelled' returning id",
+        [data.orderId, data.observation?.trim() || null],
       );
       if (!result.rows[0]) throw new Error("Venda já cancelada ou não encontrada");
       await client.query("update cash_entries set voided=true where order_id=$1", [data.orderId]);

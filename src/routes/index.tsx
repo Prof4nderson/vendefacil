@@ -41,7 +41,12 @@ import {
   type SaleRow,
 } from "@/lib/sales.functions";
 import { openPosShift } from "@/lib/ops.functions";
-import { registerAccount, verifyAccount } from "@/lib/auth.functions";
+import {
+  getUserProfile,
+  registerAccount,
+  updateUserProfile,
+  verifyAccount,
+} from "@/lib/auth.functions";
 import {
   addCatalogProduct,
   getCatalogSuggestions,
@@ -260,6 +265,18 @@ function PosPage() {
     { product_id: string; name: string; qty: number; price: number | string }[]
   >([]);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileWorking, setProfileWorking] = useState(false);
+  const [profile, setProfile] = useState({
+    name: "",
+    email: "",
+    whatsapp: "",
+    address: "",
+    cpf_cnpj: "",
+    cep: "",
+    city: "",
+    state: "",
+  });
   const [showSchemaTool, setShowSchemaTool] = useState(false);
   const [schemaStatus, setSchemaStatus] = useState<SalesSchemaStatus | null>(null);
   const [schemaWorking, setSchemaWorking] = useState(false);
@@ -629,12 +646,67 @@ function PosPage() {
       await verify({ data: { email: authData.email, pin: authData.pin } });
       setAuthenticated(authData.name);
       localStorage.setItem("vendefacil-user", authData.name);
+      localStorage.setItem("vendefacil-email", authData.email);
       setShowAuth(null);
       setPinMode(false);
       toast.success("Conta ativada com sucesso");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "PIN inválido");
     }
+  }
+  async function openProfile() {
+    setShowMenu(false);
+    setShowProfile(true);
+    const email =
+      typeof window !== "undefined"
+        ? localStorage.getItem("vendefacil-email") || authData.email
+        : authData.email;
+    if (!email) return;
+    try {
+      const saved = await getUserProfile({ data: { email } });
+      if (saved) setProfile({ ...profile, ...saved, email });
+    } catch {
+      setProfile((old) => ({ ...old, email }));
+    }
+  }
+  async function lookupCep(value: string) {
+    const cep = value.replace(/\D/g, "");
+    setProfile((old) => ({ ...old, cep: value }));
+    if (cep.length !== 8) return;
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await response.json();
+      if (!data.erro)
+        setProfile((old) => ({
+          ...old,
+          address: [data.logradouro, data.bairro].filter(Boolean).join(", "),
+          city: data.localidade || old.city,
+          state: data.uf || old.state,
+        }));
+    } catch {
+      toast.error("Não foi possível consultar o CEP");
+    }
+  }
+  async function saveProfile() {
+    if (!profile.email) return toast.error("Confirme o email da conta antes de salvar");
+    setProfileWorking(true);
+    try {
+      await updateUserProfile({ data: profile });
+      localStorage.setItem("vendefacil-user", profile.name);
+      toast.success("Meus dados atualizados");
+      setShowProfile(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível salvar");
+    } finally {
+      setProfileWorking(false);
+    }
+  }
+  function logoff() {
+    localStorage.removeItem("vendefacil-user");
+    localStorage.removeItem("vendefacil-email");
+    setAuthenticated("");
+    setShowMenu(false);
+    toast.success("Sessão encerrada");
   }
 
   return (
@@ -749,6 +821,18 @@ function PosPage() {
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
                 <BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco
+              </button>
+              <button
+                onClick={openProfile}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <CircleUserRound className="h-4 w-4 text-primary" /> Meus dados
+              </button>
+              <button
+                onClick={logoff}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-red-300 hover:bg-secondary"
+              >
+                <LogIn className="h-4 w-4 rotate-180" /> Logoff
               </button>
               <button
                 onClick={() => {
@@ -1181,6 +1265,94 @@ function PosPage() {
           </div>
         </aside>
       </main>
+      <button
+        onClick={openSale}
+        disabled={opening}
+        className="neon-button fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full px-5 py-3 text-sm font-black shadow-2xl"
+      >
+        <ShoppingCart className="h-5 w-5" /> Vender
+        {count > 0 && (
+          <span className="rounded-full bg-background/30 px-2 py-0.5 text-xs">{count}</span>
+        )}
+      </button>
+      {showProfile && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowProfile(false)}
+        >
+          <div
+            className="glass-card max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Conta</p>
+                <h2 className="font-display text-2xl font-bold">Meus dados</h2>
+              </div>
+              <button onClick={() => setShowProfile(false)}>
+                <X />
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <input
+                placeholder="Nome completo"
+                value={profile.name}
+                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm sm:col-span-2"
+              />
+              <input
+                disabled
+                value={profile.email}
+                placeholder="Email"
+                className="h-11 rounded-xl border border-input bg-secondary px-3 text-sm sm:col-span-2"
+              />
+              <input
+                placeholder="WhatsApp"
+                value={profile.whatsapp}
+                onChange={(e) => setProfile({ ...profile, whatsapp: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+              />
+              <input
+                placeholder="CPF ou CNPJ"
+                value={profile.cpf_cnpj}
+                onChange={(e) => setProfile({ ...profile, cpf_cnpj: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+              />
+              <input
+                placeholder="CEP"
+                value={profile.cep}
+                onChange={(e) => lookupCep(e.target.value)}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+              />
+              <input
+                placeholder="Endereço e número"
+                value={profile.address}
+                onChange={(e) => setProfile({ ...profile, address: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm sm:col-span-2"
+              />
+              <input
+                placeholder="Cidade"
+                value={profile.city}
+                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+              />
+              <input
+                placeholder="Estado"
+                value={profile.state}
+                onChange={(e) => setProfile({ ...profile, state: e.target.value })}
+                className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+              />
+            </div>
+            <Button
+              onClick={saveProfile}
+              disabled={profileWorking}
+              className="neon-button mt-5 h-11 w-full rounded-xl"
+            >
+              {profileWorking ? "Salvando..." : "Salvar meus dados"}
+            </Button>
+          </div>
+        </div>
+      )}
       {showSchemaTool && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"

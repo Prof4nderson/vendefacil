@@ -43,8 +43,9 @@ function SalesPage() {
   async function doCancel(sale: SaleRow) {
     if (!window.confirm(`Cancelar a venda #${sale.order_number}? O valor não será faturado.`))
       return;
+    const observation = window.prompt("Observação do cancelamento (opcional):", "") ?? "";
     try {
-      await cancel({ data: { orderId: sale.id } });
+      await cancel({ data: { orderId: sale.id, observation } });
       setSales((old) => old.map((x) => (x.id === sale.id ? { ...x, status: "cancelled" } : x)));
       toast.success("Venda cancelada e estoque devolvido");
     } catch (e) {

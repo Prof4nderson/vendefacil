@@ -68,6 +68,12 @@ export const verifySalesSchema = createServerFn({ method: "GET" }).handler(() =>
 export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(async () => {
   await tx(async (client) => {
     await client.query("create extension if not exists pgcrypto");
+    await client.query("alter table app_users add column if not exists address text");
+    await client.query("alter table app_users add column if not exists cpf_cnpj text");
+    await client.query("alter table app_users add column if not exists cep text");
+    await client.query("alter table app_users add column if not exists city text");
+    await client.query("alter table app_users add column if not exists state text");
+    await client.query("alter table orders add column if not exists cancellation_note text");
     await client.query(
       "create table if not exists workspaces (id uuid primary key default gen_random_uuid(), name text not null, owner_user_id uuid, created_at timestamptz not null default now())",
     );
