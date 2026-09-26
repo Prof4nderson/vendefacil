@@ -49,6 +49,11 @@ import {
   type CatalogSuggestion,
 } from "@/lib/catalog.functions";
 import { brl, PAYMENT_METHODS } from "@/lib/format";
+import {
+  migrateSalesSchema,
+  verifySalesSchema,
+  type SalesSchemaStatus,
+} from "@/lib/schema.functions";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
@@ -191,6 +196,8 @@ function PosPage() {
   const cancelOpenSale = useServerFn(cancelSale);
   const finalizeSale = useServerFn(finalizeOpenSale);
   const updateSale = useServerFn(updateOpenSale);
+  const checkSchema = useServerFn(verifySalesSchema);
+  const migrateSchema = useServerFn(migrateSalesSchema);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
@@ -248,6 +255,9 @@ function PosPage() {
     { product_id: string; name: string; qty: number; price: number | string }[]
   >([]);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [showSchemaTool, setShowSchemaTool] = useState(false);
+  const [schemaStatus, setSchemaStatus] = useState<SalesSchemaStatus | null>(null);
+  const [schemaWorking, setSchemaWorking] = useState(false);
   const [fontScale, setFontScale] = useState(() =>
     typeof window !== "undefined"
       ? Number(window.localStorage.getItem("vendefacil-font-scale") || 100)
@@ -398,6 +408,40 @@ function PosPage() {
       toast.success("Pedido atualizado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível atualizar");
+    }
+  }
+  async function openSchemaTool() {
+    setShowMenu(false);
+    setShowSchemaTool(true);
+    setSchemaWorking(true);
+    try {
+      setSchemaStatus(await checkSchema());
+    } catch (e) {
+      setSchemaStatus({
+        connected: false,
+        ok: false,
+        missingTables: [],
+        missingColumns: [],
+        message: e instanceof Error ? e.message : "Falha ao verificar",
+      });
+    } finally {
+      setSchemaWorking(false);
+    }
+  }
+  async function applySchemaMigration() {
+    setSchemaWorking(true);
+    try {
+      const status = await migrateSchema();
+      setSchemaStatus(status);
+      toast.success(
+        status.ok
+          ? "Banco pronto para o atendimento"
+          : "Migração executada; revise os itens pendentes",
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao migrar banco");
+    } finally {
+      setSchemaWorking(false);
     }
   }
   async function handleOpenShift() {
@@ -590,6 +634,12 @@ function PosPage() {
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
               >
                 <Settings2 className="h-4 w-4 text-primary" /> Personalizar
+              </button>
+              <button
+                onClick={openSchemaTool}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
+                <BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco
               </button>
               <button
                 onClick={() => {
@@ -996,6 +1046,85 @@ function PosPage() {
           </div>
         </aside>
       </main>
+      {showSchemaTool && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowSchemaTool(false)}
+        >
+          <div
+            className="glass-card w-full max-w-lg rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Manutenção</p>
+                <h2 className="font-display text-2xl font-bold">Banco de vendas</h2>
+              </div>
+              <button onClick={() => setShowSchemaTool(false)}>
+                <X />
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Verifique e aplique as estruturas necessárias para clientes, fiado e pedidos abertos.
+            </p>
+            {schemaWorking ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Verificando banco...
+              </div>
+            ) : (
+              schemaStatus && (
+                <div className="mt-4 rounded-xl bg-secondary/60 p-4">
+                  <p
+                    className={`font-bold ${schemaStatus.ok ? "text-emerald-300" : "text-amber-300"}`}
+                  >
+                    {schemaStatus.ok
+                      ? "Banco pronto"
+                      : schemaStatus.connected
+                        ? "Banco precisa de migração"
+                        : "Banco indisponível"}
+                  </p>
+                  {schemaStatus.message && (
+                    <p className="mt-2 break-words text-xs text-red-300">{schemaStatus.message}</p>
+                  )}
+                  {schemaStatus.missingTables.length > 0 && (
+                    <p className="mt-3 text-xs">
+                      <b>Tabelas ausentes:</b> {schemaStatus.missingTables.join(", ")}
+                    </p>
+                  )}
+                  {schemaStatus.missingColumns.length > 0 && (
+                    <p className="mt-2 text-xs">
+                      <b>Colunas ausentes:</b> {schemaStatus.missingColumns.join(", ")}
+                    </p>
+                  )}
+                </div>
+              )
+            )}
+            <div className="mt-5 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setSchemaWorking(true);
+                  try {
+                    setSchemaStatus(await checkSchema());
+                  } finally {
+                    setSchemaWorking(false);
+                  }
+                }}
+                className="flex-1 rounded-xl"
+              >
+                Verificar novamente
+              </Button>
+              <Button
+                onClick={applySchemaMigration}
+                disabled={schemaWorking || schemaStatus?.ok === true}
+                className="neon-button flex-1 rounded-xl"
+              >
+                Aplicar migração
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {showCustomize && (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-scrim px-4"
