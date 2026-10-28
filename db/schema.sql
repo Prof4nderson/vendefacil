@@ -211,7 +211,7 @@ alter table app_users add column if not exists last_login_at timestamptz;
 alter table app_users drop constraint if exists app_users_status_check;
 alter table app_users add constraint app_users_status_check check (status in ('active','disabled','suspended'));
 create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now());
-insert into sysadm_credentials(id,password_hash) values (1,'d2998be2f35a19a97e6e32ebd39f4ba7df2d8df3c30b8762662fa744a961f52f') on conflict (id) do nothing;
+insert into sysadm_credentials(id,password_hash) values (1,'0756cbd33bb23eb3c467b8564057c9f693d5fc4b6854de0b8365efdf25c25eb0') on conflict (id) do nothing;
 create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz);
 
 alter table products add column if not exists purchase_price numeric(10,2) not null default 0;

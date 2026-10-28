@@ -9,15 +9,22 @@ para celular, com modo escuro cyberpunk e modo claro holográfico. A única conf
 
 ```bash
 cp .env.example .env
-# edite usuário, senha e banco se quiser
+# defina uma senha forte para o PostgreSQL e gere três segredos de sessão distintos
+openssl rand -base64 48  # gere um valor para OPS_SESSION_SECRET
+openssl rand -base64 48  # gere outro valor para SYSADM_SESSION_SECRET
+openssl rand -base64 48  # gere outro valor para ACCOUNT_SESSION_SECRET
+openssl rand -hex 32     # use como POSTGRES_PASSWORD
 ```
+
+Preencha `POSTGRES_PASSWORD` e os três segredos no `.env` com valores fortes e distintos
+(mínimo de 32 caracteres para cada segredo de sessão). Não reutilize nem publique esses valores.
 
 Variáveis principais:
 
 | Variável            | Padrão     | Uso                                   |
 | ------------------- | ---------- | ------------------------------------- |
 | `POSTGRES_USER`     | `delivery` | usuário do banco                      |
-| `POSTGRES_PASSWORD` | `delivery` | senha do banco (**troque!**)          |
+| `POSTGRES_PASSWORD` | obrigatório | senha forte e exclusiva do banco      |
 | `POSTGRES_DB`       | `delivery` | nome do banco                         |
 | `APP_PORT`          | `3000`     | porta onde o app fica exposto no VPS  |
 
@@ -35,7 +42,8 @@ Isso faz tudo:
 2. Constrói a imagem do app a partir do `Dockerfile` e o sobe conectado ao banco.
 
 O app fica em `http://seu-vps:3000`. Coloque um Nginx (ou Caddy/Traefik) na frente
-para HTTPS e domínio próprio.
+para HTTPS e domínio próprio. A porta do PostgreSQL fica vinculada a `127.0.0.1` por padrão;
+se precisar acessá-la remotamente, use uma rede privada e firewall explícito, nunca exponha-a abertamente.
 
 ### Subir só o banco (app fora do Docker)
 
@@ -45,7 +53,7 @@ Se preferir rodar o app direto na máquina (sem container):
 docker compose up -d postgres
 bun install
 NITRO_PRESET=node-server bun run build
-DATABASE_URL=postgresql://delivery:delivery@localhost:5432/delivery bun .output/server/index.mjs
+DATABASE_URL=postgresql://delivery:senha-forte@localhost:5432/delivery bun .output/server/index.mjs
 # ou com pm2:
 # pm2 start "bun .output/server/index.mjs" --name delivery
 ```
@@ -71,6 +79,19 @@ docker compose down               # parar tudo (dados do banco são mantidos)
 Entregador de exemplo: **Carlos Entregador**, senha `1234`.
 
 Troque todas as senhas em **/admin → Senhas** logo no primeiro acesso.
+
+### Reset único de contas e sysadmin
+
+Na primeira execução da migração protegida, todas as senhas de `app_users` são redefinidas
+para `123456` e a senha do SysAdm passa a ser `SysAdm2026`. O reset é registrado em
+`app_schema_migrations` e não se repete em chamadas posteriores. Para aplicar pelo app,
+configure os segredos de sessão, entre na área `/admin` e use **Configurações → Verificar / migrar banco → Aplicar migração**.
+Alternativamente, faça backup e execute `psql "$DATABASE_URL" -f db/migrations/20261028_password_reset.sql`.
+
+`123456` é uma senha fraca e compartilhada, fornecida apenas como credencial temporária
+para este reset. Avise os usuários para trocá-la imediatamente; não a use em um ambiente
+exposto à internet. O script não redefine as senhas separadas das rotas operacionais
+(`/admin`, `/cozinha`, `/entrega`, `/caixa`) nem a conta de entregador de exemplo.
 
 ## 5. Backup
 

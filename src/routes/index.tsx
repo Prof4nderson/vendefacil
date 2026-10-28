@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   BadgeAlert,
   ArrowUp,
+  ArrowUpLeft,
   BarChart3,
   Check,
   ChevronDown,
@@ -264,6 +265,12 @@ function PosPage() {
   );
   const [opening, setOpening] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showSignupHint, setShowSignupHint] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      !window.localStorage.getItem("vendefacil-user") &&
+      window.localStorage.getItem("vendefacil-hide-signup-hint") !== "1",
+  );
   const [showCatalog, setShowCatalog] = useState(false);
   const [showShift, setShowShift] = useState(false);
   const [openingAmount, setOpeningAmount] = useState("");
@@ -289,7 +296,11 @@ function PosPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [profileWorking, setProfileWorking] = useState(false);
-  const [passwordData, setPasswordData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const [profile, setProfile] = useState({
     name: "",
     establishment_name: "",
@@ -685,7 +696,8 @@ function PosPage() {
       localStorage.setItem("vendefacil-email", result.email);
       setShowAuth(null);
       toast.success("Bem-vindo ao VendeFácil");
-      for (const message of result.messages ?? []) toast.info(`Mensagem da administração: ${message.message}`);
+      for (const message of result.messages ?? [])
+        toast.info(`Mensagem da administração: ${message.message}`);
       window.location.reload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Login inválido");
@@ -741,10 +753,16 @@ function PosPage() {
   async function savePassword() {
     if (passwordData.newPassword !== passwordData.confirmPassword)
       return toast.error("A confirmação da nova senha não confere");
-    if (passwordData.newPassword.length < 6) return toast.error("A nova senha deve ter pelo menos 6 caracteres");
+    if (passwordData.newPassword.length < 6)
+      return toast.error("A nova senha deve ter pelo menos 6 caracteres");
     setProfileWorking(true);
     try {
-      await changeUserPassword({ data: { currentPassword: passwordData.currentPassword, newPassword: passwordData.newPassword } });
+      await changeUserPassword({
+        data: {
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        },
+      });
       setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
       toast.success("Senha alterada com sucesso");
     } catch (e) {
@@ -764,16 +782,25 @@ function PosPage() {
       link.click();
       URL.revokeObjectURL(url);
       toast.success("Cópia de segurança baixada");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Não foi possível fazer a cópia"); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível fazer a cópia");
+    }
   }
   async function uploadBackup(file: File) {
-    if (!window.confirm("Restaurar esta cópia substituirá os dados atuais deste estabelecimento. Continuar?")) return;
+    if (
+      !window.confirm(
+        "Restaurar esta cópia substituirá os dados atuais deste estabelecimento. Continuar?",
+      )
+    )
+      return;
     try {
       const backup = JSON.parse(await file.text());
       await restoreBackup({ data: { backup } });
       toast.success("Cópia restaurada");
       window.location.reload();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Cópia inválida ou não foi possível restaurar"); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cópia inválida ou não foi possível restaurar");
+    }
   }
   async function logoff() {
     await logout().catch(() => undefined);
@@ -797,12 +824,37 @@ function PosPage() {
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-8">
         <div className="relative mx-auto flex max-w-[1500px] items-center gap-4">
           <button
-            onClick={() => setShowMenu((v) => !v)}
+            onClick={() => {
+              setShowMenu((v) => !v);
+              setShowSignupHint(false);
+            }}
             aria-label="Abrir menu"
             className="icon-tile grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
           >
             <House className="h-5 w-5 text-primary" />
           </button>
+          {!authenticated && showSignupHint && (
+            <div className="absolute left-12 top-14 z-40 w-[min(19rem,calc(100vw-4rem))] rounded-2xl border border-primary/30 bg-popover p-3 shadow-2xl">
+              <ArrowUpLeft
+                className="absolute -left-5 -top-4 h-5 w-5 text-primary"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-bold">Primeiro acesso?</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Abra o menu e escolha <b>Nova conta</b> para criar seu acesso.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem("vendefacil-hide-signup-hint", "1");
+                  setShowSignupHint(false);
+                }}
+                className="mt-2 text-xs font-bold text-primary underline-offset-4 hover:underline"
+              >
+                Não mostrar de novo
+              </button>
+            </div>
+          )}
           <div className="min-w-0">
             <h1 className="font-display truncate text-lg font-bold">
               {settings.restaurant_name || "VendeFácil"}
@@ -831,15 +883,33 @@ function PosPage() {
             <div className="absolute left-0 top-14 z-30 w-64 rounded-2xl border border-border bg-popover p-2 shadow-2xl">
               {!authenticated ? (
                 <>
-                  <button onClick={() => { setShowAuth("login"); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                  <button
+                    onClick={() => {
+                      setShowAuth("login");
+                      setShowMenu(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                  >
                     <LogIn className="h-4 w-4 text-primary" /> Login
                   </button>
-                  <button onClick={() => { setShowAuth("signup"); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                  <button
+                    onClick={() => {
+                      setShowAuth("signup");
+                      setShowMenu(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                  >
                     <UserPlus className="h-4 w-4 text-primary" /> Nova conta
                   </button>
                 </>
               ) : (
-                <button onClick={() => { void openProfile(); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+                <button
+                  onClick={() => {
+                    void openProfile();
+                    setShowMenu(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+                >
                   <CircleUserRound className="h-4 w-4 text-primary" /> Minha conta
                 </button>
               )}
@@ -851,13 +921,28 @@ function PosPage() {
               >
                 <LayoutDashboard className="h-4 w-4 text-primary" /> Administração
               </button>
-              <button onClick={() => { window.location.href = "/cozinha"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+              <button
+                onClick={() => {
+                  window.location.href = "/cozinha";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
                 <ChefHat className="h-4 w-4 text-primary" /> Cozinha
               </button>
-              <button onClick={() => { window.location.href = "/entrega"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+              <button
+                onClick={() => {
+                  window.location.href = "/entrega";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
                 <Bike className="h-4 w-4 text-primary" /> Entregas
               </button>
-              <button onClick={() => { window.location.href = "/caixa"; }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+              <button
+                onClick={() => {
+                  window.location.href = "/caixa";
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
                 <Wallet className="h-4 w-4 text-primary" /> Caixa
               </button>
               {!shiftOpen && (
@@ -889,7 +974,13 @@ function PosPage() {
               >
                 <WalletCards className="h-4 w-4 text-primary" /> Ver vendas
               </button>
-              <button onClick={() => { setShowSettings(true); setShowMenu(false); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary">
+              <button
+                onClick={() => {
+                  setShowSettings(true);
+                  setShowMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold hover:bg-secondary"
+              >
                 <Settings2 className="h-4 w-4 text-primary" /> Configurações
               </button>
               <button
@@ -1342,15 +1433,86 @@ function PosPage() {
       </button>
       <DeveloperBadge />
       {showSettings && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4" onClick={() => setShowSettings(false)}>
-          <div className="glass-card w-full max-w-md rounded-[1.5rem] p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between"><div><p className="eyebrow">Sistema</p><h2 className="font-display text-2xl font-bold">Configurações</h2></div><button onClick={() => setShowSettings(false)}><X /></button></div>
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-scrim px-4"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="glass-card w-full max-w-md rounded-[1.5rem] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow">Sistema</p>
+                <h2 className="font-display text-2xl font-bold">Configurações</h2>
+              </div>
+              <button onClick={() => setShowSettings(false)}>
+                <X />
+              </button>
+            </div>
             <div className="mt-4 space-y-2">
-              <button onClick={() => { setShowCustomize(true); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><Settings2 className="h-4 w-4 text-primary" /> Personalizar</button>
-              {authenticated && <button onClick={() => { void openProfile(); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><CircleUserRound className="h-4 w-4 text-primary" /> Trocar senha</button>}
-              <button onClick={() => { void openSchemaTool(); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco</button>
-              <button onClick={() => { setShowCatalog(true); setShowSettings(false); }} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"><Package className="h-4 w-4 text-primary" /> Importar CSV / produtos</button>
-              <div className="mt-4 rounded-xl border border-primary/20 p-3"><p className="mb-2 text-sm font-bold">Cópia de segurança</p><div className="grid grid-cols-2 gap-2"><button onClick={downloadBackup} className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Fazer cópia</button><label className="cursor-pointer rounded-xl bg-secondary px-3 py-2 text-center text-xs font-bold">Restaurar cópia<input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadBackup(file); e.currentTarget.value = ""; }} /></label></div></div>
+              <button
+                onClick={() => {
+                  setShowCustomize(true);
+                  setShowSettings(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"
+              >
+                <Settings2 className="h-4 w-4 text-primary" /> Personalizar
+              </button>
+              {authenticated && (
+                <button
+                  onClick={() => {
+                    void openProfile();
+                    setShowSettings(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"
+                >
+                  <CircleUserRound className="h-4 w-4 text-primary" /> Trocar senha
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  void openSchemaTool();
+                  setShowSettings(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"
+              >
+                <BadgeAlert className="h-4 w-4 text-primary" /> Verificar / migrar banco
+              </button>
+              <button
+                onClick={() => {
+                  setShowCatalog(true);
+                  setShowSettings(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl bg-secondary px-3 py-3 text-left text-sm font-bold"
+              >
+                <Package className="h-4 w-4 text-primary" /> Importar CSV / produtos
+              </button>
+              <div className="mt-4 rounded-xl border border-primary/20 p-3">
+                <p className="mb-2 text-sm font-bold">Cópia de segurança</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={downloadBackup}
+                    className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"
+                  >
+                    Fazer cópia
+                  </button>
+                  <label className="cursor-pointer rounded-xl bg-secondary px-3 py-2 text-center text-xs font-bold">
+                    Restaurar cópia
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadBackup(file);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1432,11 +1594,39 @@ function PosPage() {
             <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <h3 className="font-bold">Trocar senha</h3>
               <div className="mt-3 grid gap-2">
-                <input type="password" placeholder="Senha atual" value={passwordData.currentPassword} onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
-                <input type="password" placeholder="Nova senha (mín. 6 caracteres)" value={passwordData.newPassword} onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
-                <input type="password" placeholder="Confirmar nova senha" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })} className="h-11 rounded-xl border border-input bg-background px-3 text-sm" />
+                <input
+                  type="password"
+                  placeholder="Senha atual"
+                  value={passwordData.currentPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                  }
+                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                />
+                <input
+                  type="password"
+                  placeholder="Nova senha (mín. 6 caracteres)"
+                  value={passwordData.newPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                  }
+                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                />
+                <input
+                  type="password"
+                  placeholder="Confirmar nova senha"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) =>
+                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                  }
+                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                />
               </div>
-              <Button onClick={savePassword} disabled={profileWorking} className="mt-3 h-10 w-full rounded-xl">
+              <Button
+                onClick={savePassword}
+                disabled={profileWorking}
+                className="mt-3 h-10 w-full rounded-xl"
+              >
                 Alterar senha
               </Button>
             </div>
@@ -1866,10 +2056,27 @@ function PosPage() {
               <span className="text-xs font-bold text-primary">Selecionar / incluir</span>
             </button>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <button onClick={() => setOrderType("dine_in")} className={`rounded-xl border p-3 text-sm font-bold ${orderType === "dine_in" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}>No estabelecimento</button>
-              <button onClick={() => setOrderType("delivery")} className={`rounded-xl border p-3 text-sm font-bold ${orderType === "delivery" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}>Delivery</button>
+              <button
+                onClick={() => setOrderType("dine_in")}
+                className={`rounded-xl border p-3 text-sm font-bold ${orderType === "dine_in" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}
+              >
+                No estabelecimento
+              </button>
+              <button
+                onClick={() => setOrderType("delivery")}
+                className={`rounded-xl border p-3 text-sm font-bold ${orderType === "delivery" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary/60"}`}
+              >
+                Delivery
+              </button>
             </div>
-            {orderType === "delivery" && <input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Endereço de entrega" className="mt-3 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm" />}
+            {orderType === "delivery" && (
+              <input
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                placeholder="Endereço de entrega"
+                className="mt-3 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              />
+            )}
             <div className="mt-5 grid grid-cols-2 gap-2">
               {PAYMENT_METHODS.map((m) => (
                 <button
@@ -2013,10 +2220,7 @@ function PosPage() {
                   onChange={(e) => setAuthData({ ...authData, password: e.target.value })}
                   className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
                 />
-                <Button
-                  onClick={doLogin}
-                  className="neon-button h-11 w-full rounded-xl"
-                >
+                <Button onClick={doLogin} className="neon-button h-11 w-full rounded-xl">
                   <LogIn className="mr-2 h-4 w-4" /> Entrar
                 </Button>
                 <button

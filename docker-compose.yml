@@ -8,10 +8,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-delivery}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-delivery}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD forte no .env}
       POSTGRES_DB: ${POSTGRES_DB:-delivery}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # Roda o schema na primeira inicialização do volume
@@ -33,10 +33,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-delivery}:${POSTGRES_PASSWORD:-delivery}@postgres:5432/${POSTGRES_DB:-delivery}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-delivery}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD forte no .env}@postgres:5432/${POSTGRES_DB:-delivery}
       PGSSLMODE: "disable"
       PORT: "3000"
       HOST: "0.0.0.0"
+      ACCOUNT_SESSION_SECRET: ${ACCOUNT_SESSION_SECRET:-}
+      OPS_SESSION_SECRET: ${OPS_SESSION_SECRET:-}
+      SYSADM_SESSION_SECRET: ${SYSADM_SESSION_SECRET:-}
     ports:
       - "${APP_PORT:-3011}:3000"
     networks:

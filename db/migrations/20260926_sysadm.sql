@@ -3,7 +3,7 @@ create table if not exists sysadm_credentials (
   password_hash text not null,
   updated_at timestamptz not null default now()
 );
-insert into sysadm_credentials(id,password_hash) values (1,'d2998be2f35a19a97e6e32ebd39f4ba7df2d8df3c30b8762662fa744a961f52f') on conflict (id) do nothing;
+insert into sysadm_credentials(id,password_hash) values (1,'0756cbd33bb23eb3c467b8564057c9f693d5fc4b6854de0b8365efdf25c25eb0') on conflict (id) do nothing;
 alter table app_users add column if not exists status text not null default 'active';
 alter table app_users add column if not exists status_note text;
 alter table app_users add column if not exists last_login_at timestamptz;

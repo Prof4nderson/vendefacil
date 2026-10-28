@@ -72,8 +72,6 @@ do $$ declare w uuid; begin select id into w from workspaces order by created_at
   update route_passwords set workspace_id=w where workspace_id is null;
 end $$;
 
-update app_users set password_hash='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' where lower(name)='davi' or lower(login)='davi';
-
 alter table categories alter column workspace_id set not null;
 alter table products alter column workspace_id set not null;
 alter table daily_menu alter column workspace_id set not null;
@@ -96,10 +94,6 @@ alter table app_settings add primary key (workspace_id,key);
 alter table route_passwords drop constraint if exists route_passwords_pkey;
 alter table route_passwords drop constraint if exists route_passwords_workspace_route_key;
 alter table route_passwords add primary key (workspace_id,route);
-insert into route_passwords(workspace_id,route,password_hash)
-select workspace_id,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
-from app_users where lower(name)='davi' or lower(login)='davi'
-on conflict(workspace_id,route) do update set password_hash=excluded.password_hash;
 create index if not exists categories_workspace_idx on categories(workspace_id);
 create index if not exists daily_menu_workspace_idx on daily_menu(workspace_id);
 create index if not exists couriers_workspace_idx on couriers(workspace_id);

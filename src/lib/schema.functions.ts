@@ -1,5 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { q, tx } from "./db.server";
+import { requireRole } from "./gate.server";
+
+const TEMPORARY_USER_PASSWORD_HASH =
+  "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92";
+const SYSADM_PASSWORD_HASH = "0756cbd33bb23eb3c467b8564057c9f693d5fc4b6854de0b8365efdf25c25eb0";
 
 const requiredTables = [
   "orders",
@@ -72,6 +77,7 @@ export const verifySalesSchema = createServerFn({ method: "GET" }).handler(() =>
 );
 
 export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(async () => {
+  await requireRole("admin");
   await tx(async (client) => {
     await client.query("create extension if not exists pgcrypto");
     await client.query("alter table app_users add column if not exists address text");
@@ -164,13 +170,27 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "alter table cash_entries add column if not exists voided boolean not null default false",
     );
-    await client.query("alter table categories add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("alter table daily_menu add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("alter table couriers add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("alter table cash_entries add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("alter table app_settings add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("alter table route_passwords add column if not exists workspace_id uuid references workspaces(id) on delete cascade");
-    await client.query("insert into workspaces(name) select 'Operação migrada' where not exists (select 1 from workspaces)");
+    await client.query(
+      "alter table categories add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "alter table daily_menu add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "alter table couriers add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "alter table cash_entries add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "alter table app_settings add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "alter table route_passwords add column if not exists workspace_id uuid references workspaces(id) on delete cascade",
+    );
+    await client.query(
+      "insert into workspaces(name) select 'Operação migrada' where not exists (select 1 from workspaces)",
+    );
     await client.query(`do $$ declare w uuid; begin select id into w from workspaces order by created_at limit 1;
       update categories set workspace_id=w where workspace_id is null; update products set workspace_id=w where workspace_id is null;
       update daily_menu set workspace_id=w where workspace_id is null; update couriers set workspace_id=w where workspace_id is null;
@@ -179,12 +199,17 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
       update app_settings set workspace_id=w where workspace_id is null; update route_passwords set workspace_id=w where workspace_id is null;
     end $$`);
     await client.query(
-      "update app_users set password_hash='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' where lower(name)='davi' or lower(login)='davi'",
+      "create index if not exists categories_workspace_idx on categories(workspace_id)",
     );
-    await client.query("create index if not exists categories_workspace_idx on categories(workspace_id)");
-    await client.query("create index if not exists daily_menu_workspace_idx on daily_menu(workspace_id)");
-    await client.query("create index if not exists app_settings_workspace_idx on app_settings(workspace_id)");
-    await client.query("create index if not exists route_passwords_workspace_idx on route_passwords(workspace_id)");
+    await client.query(
+      "create index if not exists daily_menu_workspace_idx on daily_menu(workspace_id)",
+    );
+    await client.query(
+      "create index if not exists app_settings_workspace_idx on app_settings(workspace_id)",
+    );
+    await client.query(
+      "create index if not exists route_passwords_workspace_idx on route_passwords(workspace_id)",
+    );
     await client.query(`update products p set image_url=case
       when lower(c.name) like '%bebida%' or lower(c.name) like '%cerveja%' then '/product-images/beverages.jpg'
       when lower(c.name) like '%biscoito%' or lower(c.name) like '%chocolate%' then '/product-images/biscuits.jpg'
@@ -192,23 +217,33 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
       else '/product-images/grocery.jpg' end
       from categories c where c.id=p.category_id and (p.image_url is null or p.image_url='')`);
     await client.query("alter table categories drop constraint if exists categories_name_key");
-    await client.query("alter table categories drop constraint if exists categories_workspace_name_key");
-    await client.query("alter table categories add constraint categories_workspace_name_key unique(workspace_id,name)");
-    await client.query("alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key");
-    await client.query("alter table daily_menu drop constraint if exists daily_menu_workspace_weekday_product_key");
-    await client.query("alter table daily_menu add constraint daily_menu_workspace_weekday_product_key unique(workspace_id,weekday,product_id)");
-    await client.query("alter table app_settings drop constraint if exists app_settings_pkey");
-    await client.query("alter table app_settings drop constraint if exists app_settings_workspace_key");
-    await client.query("alter table app_settings add primary key(workspace_id,key)");
-    await client.query("alter table route_passwords drop constraint if exists route_passwords_pkey");
-    await client.query("alter table route_passwords drop constraint if exists route_passwords_workspace_route_key");
-    await client.query("alter table route_passwords add primary key(workspace_id,route)");
     await client.query(
-      `insert into route_passwords(workspace_id,route,password_hash)
-       select workspace_id,'admin','240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
-       from app_users where lower(name)='davi' or lower(login)='davi'
-       on conflict(workspace_id,route) do update set password_hash=excluded.password_hash`,
+      "alter table categories drop constraint if exists categories_workspace_name_key",
     );
+    await client.query(
+      "alter table categories add constraint categories_workspace_name_key unique(workspace_id,name)",
+    );
+    await client.query(
+      "alter table daily_menu drop constraint if exists daily_menu_weekday_product_id_key",
+    );
+    await client.query(
+      "alter table daily_menu drop constraint if exists daily_menu_workspace_weekday_product_key",
+    );
+    await client.query(
+      "alter table daily_menu add constraint daily_menu_workspace_weekday_product_key unique(workspace_id,weekday,product_id)",
+    );
+    await client.query("alter table app_settings drop constraint if exists app_settings_pkey");
+    await client.query(
+      "alter table app_settings drop constraint if exists app_settings_workspace_key",
+    );
+    await client.query("alter table app_settings add primary key(workspace_id,key)");
+    await client.query(
+      "alter table route_passwords drop constraint if exists route_passwords_pkey",
+    );
+    await client.query(
+      "alter table route_passwords drop constraint if exists route_passwords_workspace_route_key",
+    );
+    await client.query("alter table route_passwords add primary key(workspace_id,route)");
     await client.query(
       "alter table cash_entries alter column amount type numeric(10,2) using amount::numeric",
     );
@@ -218,16 +253,42 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "create index if not exists customers_credit_idx on customers(credit_balance desc)",
     );
-    await client.query("create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now())");
-    await client.query("insert into sysadm_credentials(id,password_hash) values (1,'d2998be2f35a19a97e6e32ebd39f4ba7df2d8df3c30b8762662fa744a961f52f') on conflict (id) do nothing");
-    await client.query("alter table app_users add column if not exists status text not null default 'active'");
+    await client.query(
+      "create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now())",
+    );
+    await client.query(
+      "insert into sysadm_credentials(id,password_hash) values (1,$1) on conflict (id) do nothing",
+      [SYSADM_PASSWORD_HASH],
+    );
+    await client.query(
+      "alter table app_users add column if not exists status text not null default 'active'",
+    );
     await client.query("alter table app_users add column if not exists status_note text");
     await client.query("alter table app_users add column if not exists last_login_at timestamptz");
     await client.query("alter table app_users drop constraint if exists app_users_status_check");
-    await client.query("alter table app_users add constraint app_users_status_check check (status in ('active','disabled','suspended'))");
-    await client.query("create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz)");
+    await client.query(
+      "alter table app_users add constraint app_users_status_check check (status in ('active','disabled','suspended'))",
+    );
+    await client.query(
+      "create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz)",
+    );
     await client.query("alter table catalog_suggestions add column if not exists image_url text");
-    await client.query("alter table products add column if not exists catalog_suggestion_id uuid references catalog_suggestions(id) on delete set null");
+    await client.query(
+      "alter table products add column if not exists catalog_suggestion_id uuid references catalog_suggestions(id) on delete set null",
+    );
+    await client.query(
+      "create table if not exists app_schema_migrations (version text primary key, applied_at timestamptz not null default now())",
+    );
+    const passwordReset = await client.query(
+      "insert into app_schema_migrations(version) values ('20261028_password_reset') on conflict do nothing returning version",
+    );
+    if (passwordReset.rowCount) {
+      await client.query("update app_users set password_hash=$1", [TEMPORARY_USER_PASSWORD_HASH]);
+      await client.query(
+        "insert into sysadm_credentials(id,password_hash,updated_at) values (1,$1,now()) on conflict(id) do update set password_hash=excluded.password_hash,updated_at=now()",
+        [SYSADM_PASSWORD_HASH],
+      );
+    }
   });
   return inspectSalesSchema();
 });
