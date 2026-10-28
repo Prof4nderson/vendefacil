@@ -11,9 +11,9 @@ export const Route = createFileRoute("/ofertas")({
   },
   head: () => ({
     meta: [
-      { title: "Ofertas do dia — cardápio com desconto" },
+      { title: "Ofertas do dia — Cardápio com desconto" },
       { name: "description", content: "Combos e pratos em destaque com desconto especial de hoje." },
-      { property: "og:title", content: "Ofertas do dia — cardápio com desconto" },
+      { property: "og:title", content: "Ofertas do dia — Cardápio com desconto" },
       { property: "og:description", content: "Combos e pratos em destaque com desconto especial de hoje." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
