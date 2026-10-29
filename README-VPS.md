@@ -173,25 +173,32 @@ A tela inicial agora funciona como um **PDV de uma única tela**, preservando a 
 - fechamento de turno pela tela **/caixa**, com resumo detalhado e base para exportação/envio;
 - catálogo inicial de alimentos, bebidas, salgados e doces; o admin continua disponível em **/admin**.
 
-### PIN de email via MailerSend
+### PIN de email via Poste.io (SMTP)
 
-Configure no `.env` ou nos secrets do deploy:
+O PIN de confirmação de cadastro agora é enviado pelo servidor SMTP em `mail.professor-anderson.com`. Configure no `.env`:
+
+```dotenv
+SMTP_HOST=mail.professor-anderson.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=noreply@professor-anderson.com
+SMTP_PASSWORD=senha-da-caixa-postal
+SMTP_FROM_EMAIL=noreply@professor-anderson.com
+SMTP_FROM_NAME=VendeFácil
+```
+
+Crie a caixa postal no Poste.io e use suas credenciais SMTP. A porta `587` usa STARTTLS obrigatório; para a porta `465`, defina `SMTP_SECURE=true` (TLS implícito). O remetente deve ser a própria caixa ou um alias autorizado no Poste.io. Mantenha `SMTP_PASSWORD` em segredo; se contiver caracteres especiais interpretados pelo Compose, coloque o valor entre aspas simples no `.env`.
+
+O certificado apresentado pelo servidor SMTP precisa ser válido, confiável e corresponder a `mail.professor-anderson.com`. O app valida o certificado e não desativa essa checagem. O teste de conexão realizado em 29/10/2026 negociou STARTTLS, mas encontrou um certificado autoassinado; instale no Poste.io um certificado confiável (por exemplo, Let's Encrypt) antes de usar o envio pelo app.
+
+Depois de salvar a configuração, reconstrua o app:
 
 ```bash
-MAILERSEND_API_TOKEN=mlsn.seu_token
-MAILERSEND_FROM_EMAIL=no-reply@seu-dominio-verificado.com
-MAILERSEND_FROM_NAME=VendeFácil
+docker compose up -d --build app
+docker compose logs -f app
 ```
 
-`MAILERSEND_FROM_EMAIL` precisa ser um remetente de domínio verificado no MailerSend. O cadastro gera um PIN de 6 dígitos, envia pela API oficial e o código expira em 15 minutos. O token não deve ser commitado nem incluído no pacote distribuído.
-
-Como alternativa legada, configure `EMAIL_WEBHOOK_URL` no `.env` para conectar um provedor HTTP de email. O endpoint recebe:
-
-```json
-{ "to": "cliente@email.com", "subject": "Seu PIN de ativação — VendeFácil", "text": "Seu código de confirmação é 123456. Ele expira em 15 minutos." }
-```
-
-Sem MailerSend ou webhook configurado, o cadastro é recusado para evitar criar contas sem possibilidade de confirmação.
+O cadastro só é concluído depois que o email for aceito pelo SMTP; em caso de falha, a conta recém-criada é removida e a aplicação informa erro. Configure também os registros SPF, DKIM e DMARC do domínio no DNS para melhorar entrega e reduzir rejeições.
 
 ### Multiusuário
 

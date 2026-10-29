@@ -40,6 +40,13 @@ services:
       ACCOUNT_SESSION_SECRET: ${ACCOUNT_SESSION_SECRET:-}
       OPS_SESSION_SECRET: ${OPS_SESSION_SECRET:-}
       SYSADM_SESSION_SECRET: ${SYSADM_SESSION_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-mail.professor-anderson.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-VendeFácil}
     ports:
       - "${APP_PORT:-3011}:3000"
     networks:

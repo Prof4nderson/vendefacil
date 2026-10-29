@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
+import nodemailer from "nodemailer";
 import { q, q1 } from "./db.server";
 import { getAppSession, getTenantContext } from "./tenant.server";
 import { getUserMessagesAfterLogin } from "./sysadm.functions";
@@ -31,43 +32,56 @@ async function provisionRoutePasswords(workspaceId: string) {
 async function sendPinEmail(email: string, pin: string) {
   const subject = "Seu PIN de ativação — VendeFácil";
   const text = `Seu código de confirmação é ${pin}. Ele expira em 15 minutos.`;
-  const token = process.env["MAILERSEND_API_TOKEN"];
-  const fromEmail = process.env["MAILERSEND_FROM_EMAIL"];
-  const fromName = process.env["MAILERSEND_FROM_NAME"] || "VendeFácil";
-  if (!token || !fromEmail) {
-    const webhook = process.env["EMAIL_WEBHOOK_URL"];
-    if (webhook) {
-      await fetch(webhook, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ to: email, subject, text }),
-      });
-      return;
-    }
+  const host = process.env["SMTP_HOST"] || "mail.professor-anderson.com";
+  const port = Number(process.env["SMTP_PORT"] || "587");
+  const user = process.env["SMTP_USER"];
+  const password = process.env["SMTP_PASSWORD"];
+  const fromEmail = process.env["SMTP_FROM_EMAIL"];
+  const fromName = process.env["SMTP_FROM_NAME"] || "VendeFácil";
+  const secureSetting = process.env["SMTP_SECURE"]?.trim().toLowerCase();
+  const secure = secureSetting ? secureSetting === "true" : port === 465;
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("SMTP_PORT inválida. Use 587 para STARTTLS ou 465 para TLS implícito.");
+  }
+  if (!user || !password || !fromEmail) {
     throw new Error(
-      "Email de cadastro não configurado. Defina MAILERSEND_API_TOKEN e MAILERSEND_FROM_EMAIL.",
+      "Email não configurado. Defina SMTP_USER, SMTP_PASSWORD e SMTP_FROM_EMAIL no .env.",
     );
   }
-  const response = await fetch("https://api.mailersend.com/v1/email", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      accept: "application/json",
-    },
-    body: JSON.stringify({
-      from: { email: fromEmail, name: fromName },
-      to: [{ email }],
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user, pass: password },
+    tls: { minVersion: "TLSv1.2" },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
+  });
+
+  try {
+    await transporter.sendMail({
+      from: { name: fromName, address: fromEmail },
+      to: email,
       subject,
       text,
       html: `<div style="font-family:Arial,sans-serif"><h2>VendeFácil</h2><p>Seu PIN de confirmação é:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${pin}</p><p>Este código expira em 15 minutos.</p></div>`,
-    }),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error("MailerSend error", response.status, detail.slice(0, 500));
+    });
+  } catch (error) {
+    const smtpError = error as NodeJS.ErrnoException & {
+      responseCode?: number;
+      command?: string;
+    };
+    console.error("Poste.io SMTP email delivery failed", {
+      code: smtpError.code,
+      responseCode: smtpError.responseCode,
+      command: smtpError.command,
+    });
     throw new Error(
-      "Não foi possível enviar o PIN por email. Verifique o remetente autorizado no MailerSend.",
+      "Não foi possível enviar o PIN. Verifique as credenciais SMTP, o remetente e a conectividade com o Poste.io.",
     );
   }
 }
