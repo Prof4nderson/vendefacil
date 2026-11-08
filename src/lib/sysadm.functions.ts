@@ -62,12 +62,19 @@ export type SysUser = {
   created_at: string;
   unread_messages: number;
 };
-export const sysadmListUsers = createServerFn({ method: "GET" }).handler(async () => {
-  await requireSysAdm();
-  return q<SysUser>(
-    `select u.id,u.workspace_id,w.name workspace_name,u.name,u.login,u.email,u.whatsapp,u.role,u.status,u.status_note,u.verified_at,u.last_login_at,u.created_at,(select count(*) from system_messages m where m.user_id=u.id and m.read_at is null)::int unread_messages from app_users u left join workspaces w on w.id=u.workspace_id order by u.created_at desc`,
-  );
-});
+export const sysadmListUsers = createServerFn({ method: "GET" })
+  .validator((data) => z.object({ search: z.string().max(200).optional() }).parse(data ?? {}))
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    const search = data.search?.trim() ?? "";
+    return q<SysUser>(
+      `select u.id,u.workspace_id,w.name workspace_name,u.name,u.login,u.email,u.whatsapp,u.role,u.status,u.status_note,u.verified_at,u.last_login_at,u.created_at,(select count(*) from system_messages m where m.user_id=u.id and m.read_at is null)::int unread_messages
+       from app_users u left join workspaces w on w.id=u.workspace_id
+       where $1='' or concat_ws(' ',u.name,u.login,u.email,u.whatsapp,w.name) ilike '%' || $1 || '%'
+       order by u.created_at desc limit 500`,
+      [search],
+    );
+  });
 const userInput = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2),
@@ -204,6 +211,7 @@ export const sysadmSendMessage = createServerFn({ method: "POST" })
 
 export type GlobalProduct = {
   id: string;
+  category_id: string;
   category_name: string;
   name: string;
   description: string | null;
@@ -213,16 +221,113 @@ export type GlobalProduct = {
   image_url: string | null;
   active: boolean;
 };
-export const sysadmListProducts = createServerFn({ method: "GET" }).handler(async () => {
+async function ensureGlobalCategories() {
+  await tx(async (client) => {
+    await client.query(
+      "create table if not exists global_catalog_categories (id uuid primary key default gen_random_uuid(), name text not null unique, created_at timestamptz not null default now())",
+    );
+    await client.query(
+      `insert into global_catalog_categories(name)
+       select min(trim(category_name)) from catalog_suggestions where trim(category_name)<>''
+       group by lower(trim(category_name))
+       on conflict (name) do nothing`,
+    );
+  });
+}
+
+export type GlobalCatalogCategory = { id: string; name: string };
+export const sysadmListCategories = createServerFn({ method: "GET" }).handler(async () => {
   await requireSysAdm();
-  return q<GlobalProduct>(
-    "select id,category_name,name,description,suggested_purchase_price,suggested_price,icon,image_url,active from catalog_suggestions order by category_name,name",
-  );
+  await ensureGlobalCategories();
+  return q<GlobalCatalogCategory>("select id,name from global_catalog_categories order by name");
 });
+
+export const sysadmSaveCategory = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({ id: z.string().uuid().optional(), name: z.string().trim().min(2).max(80) })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureGlobalCategories();
+    await tx(async (client) => {
+      const duplicate = (
+        await client.query<{ id: string }>(
+          "select id from global_catalog_categories where lower(name)=lower($1) and ($2::uuid is null or id<>$2) limit 1",
+          [data.name, data.id ?? null],
+        )
+      ).rows[0];
+      if (duplicate) throw new Error("Já existe uma categoria global com esse nome");
+      if (data.id) {
+        const oldCategory = (
+          await client.query<{ name: string }>(
+            "select name from global_catalog_categories where id=$1",
+            [data.id],
+          )
+        ).rows[0];
+        if (!oldCategory) throw new Error("Categoria global não encontrada");
+        const updated = await client.query(
+          "update global_catalog_categories set name=$1 where id=$2",
+          [data.name, data.id],
+        );
+        if (!updated.rowCount) throw new Error("Categoria global não encontrada");
+        await client.query(
+          "update catalog_suggestions set category_name=$1 where lower(category_name)=lower($2)",
+          [data.name, oldCategory.name],
+        );
+      } else {
+        await client.query("insert into global_catalog_categories(name) values($1)", [data.name]);
+      }
+    });
+    return { ok: true as const };
+  });
+
+export const sysadmDeleteCategory = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ id: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureGlobalCategories();
+    await tx(async (client) => {
+      const category = (
+        await client.query<{ name: string }>(
+          "select name from global_catalog_categories where id=$1",
+          [data.id],
+        )
+      ).rows[0];
+      if (!category) throw new Error("Categoria global não encontrada");
+      const products = (
+        await client.query<{ count: string }>(
+          "select count(*)::text as count from catalog_suggestions where lower(category_name)=lower($1)",
+          [category.name],
+        )
+      ).rows[0];
+      if (Number(products?.count ?? 0) > 0)
+        throw new Error(
+          "A categoria possui produtos globais. Mova ou exclua os produtos antes de removê-la.",
+        );
+      await client.query("delete from global_catalog_categories where id=$1", [data.id]);
+    });
+    return { ok: true as const };
+  });
+
+export const sysadmListProducts = createServerFn({ method: "GET" })
+  .validator((data) => z.object({ search: z.string().max(200).optional() }).parse(data ?? {}))
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureGlobalCategories();
+    return q<GlobalProduct>(
+      `select s.id,c.id as category_id,c.name as category_name,s.name,s.description,s.suggested_purchase_price,s.suggested_price,s.icon,s.image_url,s.active
+       from catalog_suggestions s join global_catalog_categories c on lower(c.name)=lower(s.category_name)
+       where $1='' or concat_ws(' ',s.name,s.description,c.name) ilike '%' || $1 || '%'
+       order by c.name,s.name limit 1000`,
+      [data.search?.trim() ?? ""],
+    );
+  });
 const globalProductInput = z.object({
   id: z.string().uuid().optional(),
-  category_name: z.string().min(1),
-  name: z.string().min(1),
+  category_id: z.string().uuid(),
+  name: z.string().trim().min(2).max(120),
   description: z.string().optional(),
   suggested_purchase_price: z.number().min(0),
   suggested_price: z.number().min(0),
@@ -234,7 +339,15 @@ export const sysadmSaveProduct = createServerFn({ method: "POST" })
   .validator((data) => globalProductInput.parse(data))
   .handler(async ({ data }) => {
     await requireSysAdm();
+    await ensureGlobalCategories();
     return tx(async (client) => {
+      const category = (
+        await client.query<GlobalCatalogCategory>(
+          "select id,name from global_catalog_categories where id=$1",
+          [data.category_id],
+        )
+      ).rows[0];
+      if (!category) throw new Error("Selecione uma categoria global válida");
       let oldName: string | null = null;
       if (data.id)
         oldName =
@@ -249,7 +362,7 @@ export const sysadmSaveProduct = createServerFn({ method: "POST" })
             await client.query<{ id: string }>(
               "update catalog_suggestions set category_name=$1,name=$2,description=$3,suggested_purchase_price=$4,suggested_price=$5,icon=$6,image_url=$7,active=$8 where id=$9 returning id",
               [
-                data.category_name,
+                category.name,
                 data.name,
                 data.description || null,
                 data.suggested_purchase_price,
@@ -265,7 +378,7 @@ export const sysadmSaveProduct = createServerFn({ method: "POST" })
             await client.query<{ id: string }>(
               "insert into catalog_suggestions(category_name,name,description,suggested_purchase_price,suggested_price,icon,image_url,active) values($1,$2,$3,$4,$5,$6,$7,$8) returning id",
               [
-                data.category_name,
+                category.name,
                 data.name,
                 data.description || null,
                 data.suggested_purchase_price,

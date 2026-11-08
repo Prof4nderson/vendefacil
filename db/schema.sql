@@ -241,6 +241,11 @@ create table if not exists catalog_suggestions (
   created_at timestamptz not null default now(),
   unique (category_name, name)
 );
+create table if not exists global_catalog_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  created_at timestamptz not null default now()
+);
 alter table catalog_suggestions add column if not exists image_url text;
 alter table products add column if not exists catalog_suggestion_id uuid references catalog_suggestions(id) on delete set null;
 
@@ -313,6 +318,12 @@ insert into catalog_suggestions (category_name, name, description, suggested_pri
   ('Alimentos','Açúcar Refinado União 1kg','Açúcar refinado especial pacote de 1kg',4.90,'🧂')
 on conflict (category_name, name) do nothing;
 
+insert into global_catalog_categories(name)
+select min(trim(category_name))
+from catalog_suggestions
+where trim(category_name) <> ''
+group by lower(trim(category_name))
+on conflict (name) do nothing;
 
 -- ============ Vendas administráveis ============
 alter table cash_entries add column if not exists voided boolean not null default false;
