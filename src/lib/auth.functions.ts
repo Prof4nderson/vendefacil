@@ -74,11 +74,18 @@ async function sendPinEmail(email: string, pin: string) {
     const smtpError = error as NodeJS.ErrnoException & {
       responseCode?: number;
       command?: string;
+      hostname?: string;
+      address?: string;
+      port?: number;
     };
     console.error("Poste.io SMTP email delivery failed", {
       code: smtpError.code,
+      message: smtpError.message?.slice(0, 300),
       responseCode: smtpError.responseCode,
       command: smtpError.command,
+      hostname: smtpError.hostname || host,
+      address: smtpError.address,
+      port: smtpError.port || port,
     });
     throw new Error(
       "Não foi possível enviar o PIN. Verifique as credenciais SMTP, o remetente e a conectividade com o Poste.io.",
@@ -130,7 +137,12 @@ export const verifyAccount = createServerFn({ method: "POST" })
     z.object({ email: z.string().email(), pin: z.string().length(6) }).parse(data),
   )
   .handler(async ({ data }) => {
-    const user = await q1<{ id: string; name: string; email: string; workspace_id: string }>(
+    const user = await q1<{
+      id: string;
+      name: string;
+      email: string;
+      workspace_id: string;
+    }>(
       "select id,name,email,workspace_id from app_users where lower(email)=lower($1) and verification_pin=$2 and pin_expires_at > now()",
       [data.email, hash(data.pin)],
     );

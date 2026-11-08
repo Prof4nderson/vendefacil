@@ -3,22 +3,353 @@ import { z } from "zod";
 import { q, q1, tx } from "./db.server";
 import { getTenantContext } from "./tenant.server";
 
-export type CatalogSuggestion={id:string;category_name:string;name:string;description:string|null;suggested_purchase_price:number|string;suggested_price:number|string;icon:string};
-function imageForCategory(category:string): string {
-  const name=category.toLowerCase();
-  if(name.includes("bebida")||name.includes("cerveja")) return "/product-images/beverages.jpg";
-  if(name.includes("biscoito")||name.includes("chocolate")) return "/product-images/biscuits.jpg";
-  if(name.includes("salgadinho")) return "/product-images/snacks.jpg";
+export type CatalogSuggestion = {
+  id: string;
+  category_name: string;
+  name: string;
+  description: string | null;
+  suggested_purchase_price: number | string;
+  suggested_price: number | string;
+  icon: string;
+  image_url?: string | null;
+};
+function imageForCategory(category: string): string {
+  const name = category.toLowerCase();
+  if (name.includes("bebida") || name.includes("cerveja")) return "/product-images/beverages.jpg";
+  if (name.includes("biscoito") || name.includes("chocolate"))
+    return "/product-images/biscuits.jpg";
+  if (name.includes("salgadinho")) return "/product-images/snacks.jpg";
   return "/product-images/grocery.jpg";
 }
-function parseCsvLine(line:string, delimiter:string): string[] {
-  const values:string[]=[]; let value=""; let quoted=false;
-  for(let i=0;i<line.length;i++) { const char=line[i]; if(char==='"') { if(quoted&&line[i+1]==='"'){value+='"';i++;} else quoted=!quoted; } else if(char===delimiter&&!quoted){values.push(value.trim());value="";} else value+=char; }
-  values.push(value.trim()); return values;
+function parseCsvLine(line: string, delimiter: string): string[] {
+  const values: string[] = [];
+  let value = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') {
+        value += '"';
+        i++;
+      } else quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      values.push(value.trim());
+      value = "";
+    } else value += char;
+  }
+  values.push(value.trim());
+  return values;
 }
-function parseNumber(value:string|undefined, fallback=0): number { const parsed=Number((value??"").replace(/^"|"$/g,"").trim().replace(",",".")); return Number.isFinite(parsed)?parsed:fallback; }
+function parseNumber(value: string | undefined, fallback = 0): number {
+  const parsed = Number((value ?? "").replace(/^"|"$/g, "").trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
-export const getCatalogSuggestions=createServerFn({method:"GET"}).handler(async()=>{try{return await q<CatalogSuggestion>("select * from catalog_suggestions where active=true order by category_name,name")}catch{return[]}});
-export const addCatalogProduct=createServerFn({method:"POST"}).validator((data)=>z.object({suggestionId:z.string().uuid(),stock:z.number().int().min(0).default(0),minStock:z.number().int().min(0).default(5)}).parse(data)).handler(async({data})=>{const{workspaceId}=await getTenantContext();const suggestion=await q1<CatalogSuggestion>("select * from catalog_suggestions where id=$1 and active=true",[data.suggestionId]);if(!suggestion)throw new Error("Sugestão não encontrada");return tx(async(client)=>{let category=(await client.query<{id:string}>("select id from categories where workspace_id=$1 and lower(name)=lower($2) limit 1",[workspaceId,suggestion.category_name])).rows[0];if(!category)category=(await client.query<{id:string}>("insert into categories(workspace_id,name) values($1,$2) returning id",[workspaceId,suggestion.category_name])).rows[0];const existing=(await client.query<{id:string}>("select id from products where workspace_id=$1 and lower(name)=lower($2) limit 1",[workspaceId,suggestion.name])).rows[0];if(existing)return{ok:true as const,productId:existing.id,alreadyExists:true as const};const inserted=(await client.query<{id:string}>("insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen,catalog_suggestion_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,false,$10) returning id",[workspaceId,category?.id,suggestion.name,suggestion.description,suggestion.suggested_price,suggestion.suggested_purchase_price,data.stock,data.minStock,suggestion.image_url || imageForCategory(suggestion.category_name),suggestion.id])).rows[0];return{ok:true as const,productId:inserted?.id,alreadyExists:false as const}})});
-export const importCatalogCsv=createServerFn({method:"POST"}).validator((data)=>z.object({csv:z.string().min(5)}).parse(data)).handler(async({data})=>{const{workspaceId}=await getTenantContext();const rawLines=data.csv.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);const headerLine=rawLines.shift()??"";const delimiter=headerLine.includes(";")?";":",";const header=parseCsvLine(headerLine,delimiter).map(x=>x.replace(/^"|"$/g,"").trim().toLowerCase());const idx=(names:string[],fallback=-1)=>{const i=header.findIndex(h=>names.includes(h));return i>=0?i:fallback};const ni=idx(["nome","name","produto"],0),ci=idx(["categoria","category"],1),pi=idx(["preco","preço","price","preco_venda"],2),pui=idx(["preco_compra","preço_compra","purchase_price"]),si=idx(["estoque","stock"],3),mi=idx(["estoque_minimo","min_stock","minimo"]),di=idx(["descricao","descrição","description"]),ki=idx(["preparo_cozinha","cozinha","needs_kitchen","preparo"]);let imported=0;await tx(async(client)=>{for(const line of rawLines){const cols=parseCsvLine(line,delimiter);const name=(cols[ni]??"").replace(/^"|"$/g,"").trim();if(!name)continue;const categoryName=(cols[ci]??"Outros").replace(/^"|"$/g,"").trim()||"Outros";const price=Math.max(0,parseNumber(cols[pi]));const purchase=Math.max(0,parseNumber(cols[pui]));const stock=Math.max(0,Math.floor(parseNumber(cols[si])));const minStock=Math.max(0,Math.floor(parseNumber(cols[mi],5)));const description=(cols[di]??"").replace(/^"|"$/g,"").trim()||null;const kitchenValue=(cols[ki]??"").toLowerCase().trim();const needsKitchen=["sim","s","true","1","yes","cozinha"].includes(kitchenValue);let category=(await client.query<{id:string}>("select id from categories where workspace_id=$1 and lower(name)=lower($2) limit 1",[workspaceId,categoryName])).rows[0];if(!category)category=(await client.query<{id:string}>("insert into categories(workspace_id,name) values($1,$2) returning id",[workspaceId,categoryName])).rows[0];await client.query("insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)",[workspaceId,category?.id,name,description,price,purchase,stock,minStock,imageForCategory(categoryName),needsKitchen]);imported++}});return{ok:true,imported}});
-export const getCustomers=createServerFn({method:"GET"}).handler(async()=>{try{const{workspaceId}=await getTenantContext();return await q("select id,name,phone,credit_balance from customers where workspace_id=$1 order by updated_at desc,name",[workspaceId])}catch{return[]}});
+export const getCatalogSuggestions = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    return await q<CatalogSuggestion>(
+      "select * from catalog_suggestions where active=true order by category_name,name",
+    );
+  } catch {
+    return [];
+  }
+});
+export const addCatalogProduct = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        suggestionId: z.string().uuid(),
+        stock: z.number().int().min(0).default(0),
+        minStock: z.number().int().min(0).default(5),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { workspaceId } = await getTenantContext();
+    const suggestion = await q1<CatalogSuggestion>(
+      "select * from catalog_suggestions where id=$1 and active=true",
+      [data.suggestionId],
+    );
+    if (!suggestion) throw new Error("Sugestão não encontrada");
+    return tx(async (client) => {
+      let category = (
+        await client.query<{ id: string }>(
+          "select id from categories where workspace_id=$1 and lower(name)=lower($2) limit 1",
+          [workspaceId, suggestion.category_name],
+        )
+      ).rows[0];
+      if (!category)
+        category = (
+          await client.query<{ id: string }>(
+            "insert into categories(workspace_id,name) values($1,$2) returning id",
+            [workspaceId, suggestion.category_name],
+          )
+        ).rows[0];
+      const existing = (
+        await client.query<{ id: string }>(
+          "select id from products where workspace_id=$1 and lower(name)=lower($2) limit 1",
+          [workspaceId, suggestion.name],
+        )
+      ).rows[0];
+      if (existing)
+        return { ok: true as const, productId: existing.id, alreadyExists: true as const };
+      const inserted = (
+        await client.query<{ id: string }>(
+          "insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen,catalog_suggestion_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,false,$10) returning id",
+          [
+            workspaceId,
+            category?.id,
+            suggestion.name,
+            suggestion.description,
+            suggestion.suggested_price,
+            suggestion.suggested_purchase_price,
+            data.stock,
+            data.minStock,
+            suggestion.image_url || imageForCategory(suggestion.category_name),
+            suggestion.id,
+          ],
+        )
+      ).rows[0];
+      return { ok: true as const, productId: inserted?.id, alreadyExists: false as const };
+    });
+  });
+export const importCatalogCsv = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ csv: z.string().min(5) }).parse(data))
+  .handler(async ({ data }) => {
+    const { workspaceId } = await getTenantContext();
+    const rawLines = data.csv
+      .split(/\r?\n/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const headerLine = rawLines.shift() ?? "";
+    const delimiter = headerLine.includes(";") ? ";" : ",";
+    const header = parseCsvLine(headerLine, delimiter).map((x) =>
+      x.replace(/^"|"$/g, "").trim().toLowerCase(),
+    );
+    const idx = (names: string[], fallback = -1) => {
+      const i = header.findIndex((h) => names.includes(h));
+      return i >= 0 ? i : fallback;
+    };
+    const ni = idx(["nome", "name", "produto"], 0),
+      ci = idx(["categoria", "category"], 1),
+      pi = idx(["preco", "preço", "price", "preco_venda"], 2),
+      pui = idx(["preco_compra", "preço_compra", "purchase_price"]),
+      si = idx(["estoque", "stock"], 3),
+      mi = idx(["estoque_minimo", "min_stock", "minimo"]),
+      di = idx(["descricao", "descrição", "description"]),
+      ki = idx(["preparo_cozinha", "cozinha", "needs_kitchen", "preparo"]);
+    let imported = 0;
+    await tx(async (client) => {
+      for (const line of rawLines) {
+        const cols = parseCsvLine(line, delimiter);
+        const name = (cols[ni] ?? "").replace(/^"|"$/g, "").trim();
+        if (!name) continue;
+        const categoryName = (cols[ci] ?? "Outros").replace(/^"|"$/g, "").trim() || "Outros";
+        const price = Math.max(0, parseNumber(cols[pi]));
+        const purchase = Math.max(0, parseNumber(cols[pui]));
+        const stock = Math.max(0, Math.floor(parseNumber(cols[si])));
+        const minStock = Math.max(0, Math.floor(parseNumber(cols[mi], 5)));
+        const description = (cols[di] ?? "").replace(/^"|"$/g, "").trim() || null;
+        const kitchenValue = (cols[ki] ?? "").toLowerCase().trim();
+        const needsKitchen = ["sim", "s", "true", "1", "yes", "cozinha"].includes(kitchenValue);
+        let category = (
+          await client.query<{ id: string }>(
+            "select id from categories where workspace_id=$1 and lower(name)=lower($2) limit 1",
+            [workspaceId, categoryName],
+          )
+        ).rows[0];
+        if (!category)
+          category = (
+            await client.query<{ id: string }>(
+              "insert into categories(workspace_id,name) values($1,$2) returning id",
+              [workspaceId, categoryName],
+            )
+          ).rows[0];
+        await client.query(
+          "insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen) values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)",
+          [
+            workspaceId,
+            category?.id,
+            name,
+            description,
+            price,
+            purchase,
+            stock,
+            minStock,
+            imageForCategory(categoryName),
+            needsKitchen,
+          ],
+        );
+        imported++;
+      }
+    });
+    return { ok: true, imported };
+  });
+export const saveOnboardingCategories = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z.object({ names: z.array(z.string().trim().min(2).max(60)).min(1).max(30) }).parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { workspaceId } = await getTenantContext();
+    const uniqueNames = [
+      ...new Map(data.names.map((name) => [name.toLocaleLowerCase("pt-BR"), name])).values(),
+    ];
+    return tx(async (client) => {
+      const productCount = (
+        await client.query<{ count: string }>(
+          "select count(*)::text as count from products where workspace_id=$1",
+          [workspaceId],
+        )
+      ).rows[0];
+      if (Number(productCount?.count ?? 0) === 0) {
+        await client.query(
+          `delete from categories c where c.workspace_id=$1
+           and not exists (select 1 from unnest($2::text[]) as selected(name) where lower(selected.name)=lower(c.name))`,
+          [workspaceId, uniqueNames],
+        );
+      }
+      for (const [index, name] of uniqueNames.entries()) {
+        const existing = (
+          await client.query<{ id: string }>(
+            "select id from categories where workspace_id=$1 and lower(name)=lower($2) limit 1",
+            [workspaceId, name],
+          )
+        ).rows[0];
+        if (!existing) {
+          await client.query(
+            "insert into categories(workspace_id,name,sort_order,active) values($1,$2,$3,true)",
+            [workspaceId, name, index + 1],
+          );
+        }
+      }
+      return (
+        await client.query<{ id: string; name: string; sort_order: number }>(
+          "select id,name,sort_order from categories where workspace_id=$1 and active=true order by sort_order,name",
+          [workspaceId],
+        )
+      ).rows;
+    });
+  });
+
+export const addOnboardingSuggestion = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        suggestionId: z.string().uuid(),
+        stock: z.number().int().min(0).default(0),
+        minStock: z.number().int().min(0).default(5),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { workspaceId } = await getTenantContext();
+    const suggestion = await q1<CatalogSuggestion>(
+      "select * from catalog_suggestions where id=$1 and active=true",
+      [data.suggestionId],
+    );
+    if (!suggestion) throw new Error("Sugestão não encontrada");
+    return tx(async (client) => {
+      const category = (
+        await client.query<{ id: string }>(
+          "select id from categories where workspace_id=$1 and lower(name)=lower($2) and active=true limit 1",
+          [workspaceId, suggestion.category_name],
+        )
+      ).rows[0];
+      if (!category) throw new Error("Cadastre primeiro a categoria deste produto");
+      const existing = (
+        await client.query<{ id: string }>(
+          "select id from products where workspace_id=$1 and lower(name)=lower($2) limit 1",
+          [workspaceId, suggestion.name],
+        )
+      ).rows[0];
+      if (existing)
+        return { ok: true as const, productId: existing.id, alreadyExists: true as const };
+      const inserted = (
+        await client.query<{ id: string }>(
+          `insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen,catalog_suggestion_id)
+           values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,false,$10) returning id`,
+          [
+            workspaceId,
+            category.id,
+            suggestion.name,
+            suggestion.description,
+            suggestion.suggested_price,
+            suggestion.suggested_purchase_price,
+            data.stock,
+            data.minStock,
+            suggestion.image_url || imageForCategory(suggestion.category_name),
+            suggestion.id,
+          ],
+        )
+      ).rows[0];
+      if (!inserted) throw new Error("Não foi possível cadastrar o produto sugerido");
+      return { ok: true as const, productId: inserted.id, alreadyExists: false as const };
+    });
+  });
+
+export const createOnboardingProduct = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({
+        categoryId: z.string().uuid(),
+        name: z.string().trim().min(2).max(120),
+        description: z.string().trim().max(500).optional(),
+        price: z.number().min(0),
+        purchasePrice: z.number().min(0).default(0),
+        stock: z.number().int().min(0).default(0),
+        minStock: z.number().int().min(0).default(5),
+        needsKitchen: z.boolean().default(false),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { workspaceId } = await getTenantContext();
+    return tx(async (client) => {
+      const category = (
+        await client.query<{ id: string; name: string }>(
+          "select id,name from categories where id=$1 and workspace_id=$2 and active=true",
+          [data.categoryId, workspaceId],
+        )
+      ).rows[0];
+      if (!category) throw new Error("Selecione uma categoria deste estabelecimento");
+      const existing = (
+        await client.query<{ id: string }>(
+          "select id from products where workspace_id=$1 and lower(name)=lower($2) limit 1",
+          [workspaceId, data.name],
+        )
+      ).rows[0];
+      if (existing) throw new Error("Já existe um produto com esse nome neste estabelecimento");
+      const inserted = (
+        await client.query<{ id: string }>(
+          `insert into products(workspace_id,category_id,name,description,price,purchase_price,stock,min_stock,image_url,available,needs_kitchen)
+           values($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10) returning id`,
+          [
+            workspaceId,
+            category.id,
+            data.name,
+            data.description || null,
+            data.price,
+            data.purchasePrice,
+            data.stock,
+            data.minStock,
+            imageForCategory(category.name),
+            data.needsKitchen,
+          ],
+        )
+      ).rows[0];
+      if (!inserted) throw new Error("Não foi possível cadastrar o produto");
+      return { ok: true as const, productId: inserted.id };
+    });
+  });
+
+export const getCustomers = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    const { workspaceId } = await getTenantContext();
+    return await q(
+      "select id,name,phone,credit_balance from customers where workspace_id=$1 order by updated_at desc,name",
+      [workspaceId],
+    );
+  } catch {
+    return [];
+  }
+});

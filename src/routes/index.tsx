@@ -57,10 +57,13 @@ import {
   verifyAccount,
 } from "@/lib/auth.functions";
 import {
+  addOnboardingSuggestion,
   addCatalogProduct,
+  createOnboardingProduct,
   getCatalogSuggestions,
   getCustomers,
   importCatalogCsv,
+  saveOnboardingCategories,
   type CatalogSuggestion,
 } from "@/lib/catalog.functions";
 import { brl, PAYMENT_METHODS } from "@/lib/format";
@@ -83,8 +86,13 @@ export const Route = createFileRoute("/")({
   },
   head: ({ loaderData }) => ({
     meta: [
-      { title: `${loaderData?.settings.restaurant_name ?? "VendeFácil"} — PDV` },
-      { name: "description", content: "Controle simples de vendas, clientes, estoque e turnos." },
+      {
+        title: `${loaderData?.settings.restaurant_name ?? "VendeFácil"} — PDV`,
+      },
+      {
+        name: "description",
+        content: "Controle simples de vendas, clientes, estoque e turnos.",
+      },
     ],
   }),
   component: PosPage,
@@ -195,8 +203,7 @@ const fallbackCategories: Category[] = [
 
 function PosPage() {
   const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
-  const hasAccountSession =
-    typeof window !== "undefined" && !!window.localStorage.getItem("vendefacil-email");
+  const [hasAccountSession, setHasAccountSession] = useState(false);
   const products = (menu.products as Product[])?.length
     ? (menu.products as Product[])
     : hasAccountSession
@@ -260,24 +267,14 @@ function PosPage() {
     email: "",
     pin: "",
   });
-  const [authenticated, setAuthenticated] = useState(() =>
-    typeof window !== "undefined" ? window.localStorage.getItem("vendefacil-user") || "" : "",
-  );
+  const [authenticated, setAuthenticated] = useState("");
   const [opening, setOpening] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [showSignupHint, setShowSignupHint] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      !window.localStorage.getItem("vendefacil-user") &&
-      window.localStorage.getItem("vendefacil-hide-signup-hint") !== "1",
-  );
+  const [showSignupHint, setShowSignupHint] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showShift, setShowShift] = useState(false);
   const [openingAmount, setOpeningAmount] = useState("");
-  const [shiftOpen, setShiftOpen] = useState(
-    () =>
-      typeof window !== "undefined" && window.localStorage.getItem("vendefacil-shift-open") === "1",
-  );
+  const [shiftOpen, setShiftOpen] = useState(false);
   const [creditAmount, setCreditAmount] = useState(0);
   const [orderType, setOrderType] = useState<"dine_in" | "delivery">("dine_in");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -315,20 +312,26 @@ function PosPage() {
   const [showSchemaTool, setShowSchemaTool] = useState(false);
   const [schemaStatus, setSchemaStatus] = useState<SalesSchemaStatus | null>(null);
   const [schemaWorking, setSchemaWorking] = useState(false);
-  const [fontScale, setFontScale] = useState(() =>
-    typeof window !== "undefined"
-      ? Number(window.localStorage.getItem("vendefacil-font-scale") || 100)
-      : 100,
-  );
-  const [primaryColor, setPrimaryColor] = useState(() =>
-    typeof window !== "undefined"
-      ? window.localStorage.getItem("vendefacil-primary-color") || "#00d5ff"
-      : "#00d5ff",
-  );
+  const [fontScale, setFontScale] = useState(100);
+  const [primaryColor, setPrimaryColor] = useState("#00d5ff");
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   useEffect(() => {
+    const storedUser = window.localStorage.getItem("vendefacil-user") || "";
+    setAuthenticated(storedUser);
+    setHasAccountSession(!!window.localStorage.getItem("vendefacil-email"));
+    setShowSignupHint(
+      !storedUser && window.localStorage.getItem("vendefacil-hide-signup-hint") !== "1",
+    );
+    setShiftOpen(window.localStorage.getItem("vendefacil-shift-open") === "1");
+    setFontScale(Number(window.localStorage.getItem("vendefacil-font-scale") || 100));
+    setPrimaryColor(window.localStorage.getItem("vendefacil-primary-color") || "#00d5ff");
+    setPreferencesLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!preferencesLoaded) return;
     localStorage.setItem("vendefacil-font-scale", String(fontScale));
     localStorage.setItem("vendefacil-primary-color", primaryColor);
-  }, [fontScale, primaryColor]);
+  }, [fontScale, primaryColor, preferencesLoaded]);
   useEffect(() => {
     let active = true;
     void loadCustomerSummaries()
@@ -340,7 +343,11 @@ function PosPage() {
               (item) => item.customer_name.toLowerCase() === customer.name.toLowerCase(),
             );
             return summary
-              ? { ...customer, total: Number(summary.total), items: Number(summary.items) }
+              ? {
+                  ...customer,
+                  total: Number(summary.total),
+                  items: Number(summary.items),
+                }
               : customer;
           }),
         );
@@ -428,7 +435,10 @@ function PosPage() {
           order_type: "dine_in",
           payment_method: "Pendente",
           save_open: true,
-          items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
+          items: cartItems.map((i) => ({
+            product_id: i.product.id,
+            qty: i.qty,
+          })),
         },
       });
       setCart({});
@@ -469,7 +479,14 @@ function PosPage() {
     setActiveCustomer(id);
     setSelectingSaleCustomer(false);
     setShowSaleCustomer(false);
-    const customer = { id, name, note: "Consumo em aberto", total: 0, items: 0, credit: 0 };
+    const customer = {
+      id,
+      name,
+      note: "Consumo em aberto",
+      total: 0,
+      items: 0,
+      credit: 0,
+    };
     await inspectCustomer(customer);
     setSelectingFinalizationCustomer(false);
     setShowPayment(true);
@@ -531,7 +548,10 @@ function PosPage() {
       await updateSale({
         data: {
           orderId: editingSaleId,
-          items: editingItems.map(({ product_id, qty }) => ({ product_id, qty })),
+          items: editingItems.map(({ product_id, qty }) => ({
+            product_id,
+            qty,
+          })),
         },
       });
       const customer = customers.find((c) => c.id === activeCustomer);
@@ -579,7 +599,9 @@ function PosPage() {
   }
   async function handleOpenShift() {
     try {
-      await startShift({ data: { opening_amount: Number(openingAmount.replace(",", ".")) || 0 } });
+      await startShift({
+        data: { opening_amount: Number(openingAmount.replace(",", ".")) || 0 },
+      });
       setShiftOpen(true);
       localStorage.setItem("vendefacil-shift-open", "1");
       setShowShift(false);
@@ -625,7 +647,10 @@ function PosPage() {
             payment_method: payment,
             amount_paid: Math.max(0, total - newCredit),
             credit_amount: newCredit,
-            items: cartItems.map((i) => ({ product_id: i.product.id, qty: i.qty })),
+            items: cartItems.map((i) => ({
+              product_id: i.product.id,
+              qty: i.qty,
+            })),
           },
         });
         toast.success(`Venda registrada • ${brl(total)}`);
@@ -689,7 +714,9 @@ function PosPage() {
   }
   async function doLogin() {
     try {
-      const result = await login({ data: { login: authData.login, password: authData.password } });
+      const result = await login({
+        data: { login: authData.login, password: authData.password },
+      });
       setCart({});
       setAuthenticated(result.name);
       localStorage.setItem("vendefacil-user", result.name);
@@ -763,7 +790,11 @@ function PosPage() {
           newPassword: passwordData.newPassword,
         },
       });
-      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
       toast.success("Senha alterada com sucesso");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível alterar a senha");
@@ -774,7 +805,9 @@ function PosPage() {
   async function downloadBackup() {
     try {
       const backup = await makeBackup();
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -816,10 +849,23 @@ function PosPage() {
     window.location.reload();
   }
 
+  if (menu.setupRequired)
+    return (
+      <CatalogOnboarding
+        suggestions={suggestions as CatalogSuggestion[]}
+        existingCategories={menu.categories as Category[]}
+      />
+    );
+
   return (
     <div
       className="min-h-screen pb-8"
-      style={{ fontSize: `${fontScale}%`, "--primary": primaryColor } as CSSProperties}
+      style={
+        {
+          fontSize: `${fontScale}%`,
+          "--primary": primaryColor,
+        } as CSSProperties
+      }
     >
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-8">
         <div className="relative mx-auto flex max-w-[1500px] items-center gap-4">
@@ -1599,7 +1645,10 @@ function PosPage() {
                   placeholder="Senha atual"
                   value={passwordData.currentPassword}
                   onChange={(e) =>
-                    setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                    setPasswordData({
+                      ...passwordData,
+                      currentPassword: e.target.value,
+                    })
                   }
                   className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                 />
@@ -1608,7 +1657,10 @@ function PosPage() {
                   placeholder="Nova senha (mín. 6 caracteres)"
                   value={passwordData.newPassword}
                   onChange={(e) =>
-                    setPasswordData({ ...passwordData, newPassword: e.target.value })
+                    setPasswordData({
+                      ...passwordData,
+                      newPassword: e.target.value,
+                    })
                   }
                   className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                 />
@@ -1617,7 +1669,10 @@ function PosPage() {
                   placeholder="Confirmar nova senha"
                   value={passwordData.confirmPassword}
                   onChange={(e) =>
-                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                    setPasswordData({
+                      ...passwordData,
+                      confirmPassword: e.target.value,
+                    })
                   }
                   className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
                 />
@@ -1974,7 +2029,9 @@ function PosPage() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
-                    const result = await importCsv({ data: { csv: await file.text() } });
+                    const result = await importCsv({
+                      data: { csv: await file.text() },
+                    });
                     toast.success(`${result.imported} produtos importados`);
                     setShowCatalog(false);
                     window.location.reload();
@@ -2235,6 +2292,466 @@ function PosPage() {
         </div>
       )}
     </div>
+  );
+}
+
+type OnboardingCategory = { id: string; name: string; sort_order: number };
+
+function CatalogOnboarding({
+  suggestions,
+  existingCategories,
+}: {
+  suggestions: CatalogSuggestion[];
+  existingCategories: Category[];
+}) {
+  const saveCategories = useServerFn(saveOnboardingCategories);
+  const addSuggestedProduct = useServerFn(addOnboardingSuggestion);
+  const createProduct = useServerFn(createOnboardingProduct);
+  const categoryOptions = [
+    ...new Set(suggestions.map((item) => item.category_name.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const [step, setStep] = useState<"categories" | "products">(
+    existingCategories.length ? "products" : "categories",
+  );
+  const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[]>(
+    existingCategories.map((category) => category.name),
+  );
+  const [categories, setCategories] = useState<OnboardingCategory[]>(existingCategories);
+  const [customCategory, setCustomCategory] = useState("");
+  const [activeCategoryId, setActiveCategoryId] = useState(existingCategories[0]?.id ?? "");
+  const [addedSuggestionIds, setAddedSuggestionIds] = useState<string[]>([]);
+  const [addedProducts, setAddedProducts] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [showCustomProduct, setShowCustomProduct] = useState(false);
+  const [productName, setProductName] = useState("");
+  const [productDescription, setProductDescription] = useState("");
+  const [productPrice, setProductPrice] = useState("");
+  const [productStock, setProductStock] = useState("0");
+  const [productNeedsKitchen, setProductNeedsKitchen] = useState(false);
+
+  function toggleCategory(name: string) {
+    setSelectedCategoryNames((current) =>
+      current.some((item) => item.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))
+        ? current.filter(
+            (item) => item.toLocaleLowerCase("pt-BR") !== name.toLocaleLowerCase("pt-BR"),
+          )
+        : [...current, name],
+    );
+  }
+
+  function addCustomCategory() {
+    const name = customCategory.trim();
+    if (name.length < 2) {
+      toast.error("Digite um nome de categoria com pelo menos 2 caracteres");
+      return;
+    }
+    if (
+      selectedCategoryNames.some(
+        (item) => item.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"),
+      )
+    ) {
+      toast.error("Essa categoria já está selecionada");
+      return;
+    }
+    if (selectedCategoryNames.length >= 30) {
+      toast.error("Limite de 30 categorias por configuração");
+      return;
+    }
+    setSelectedCategoryNames((current) => [...current, name]);
+    setCustomCategory("");
+  }
+
+  async function continueToProducts() {
+    if (!selectedCategoryNames.length) {
+      toast.error("Escolha ou crie pelo menos uma categoria");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await saveCategories({ data: { names: selectedCategoryNames } });
+      setCategories(saved);
+      setActiveCategoryId(saved[0]?.id ?? "");
+      setStep("products");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar as categorias");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addSuggestion(item: CatalogSuggestion) {
+    setSaving(true);
+    try {
+      const result = await addSuggestedProduct({
+        data: { suggestionId: item.id, stock: 0, minStock: 5 },
+      });
+      if (!result.alreadyExists) setAddedProducts((current) => [...current, item.name]);
+      setAddedSuggestionIds((current) => [...current, item.id]);
+      toast.success(
+        result.alreadyExists ? `${item.name} já está cadastrado` : `${item.name} adicionado`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível adicionar o produto");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addCustomProduct() {
+    const price = Number(productPrice.replace(",", "."));
+    const stock = Number(productStock);
+    if (productName.trim().length < 2) {
+      toast.error("Informe o nome do produto");
+      return;
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      toast.error("Informe um preço de venda maior que zero");
+      return;
+    }
+    if (!Number.isInteger(stock) || stock < 0) {
+      toast.error("Informe um estoque válido");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createProduct({
+        data: {
+          categoryId: activeCategoryId,
+          name: productName.trim(),
+          description: productDescription.trim(),
+          price,
+          stock,
+          minStock: 5,
+          needsKitchen: productNeedsKitchen,
+        },
+      });
+      setAddedProducts((current) => [...current, productName.trim()]);
+      setProductName("");
+      setProductDescription("");
+      setProductPrice("");
+      setProductStock("0");
+      setProductNeedsKitchen(false);
+      setShowCustomProduct(false);
+      toast.success("Produto cadastrado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível cadastrar o produto");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const activeCategory = categories.find((category) => category.id === activeCategoryId);
+  const visibleSuggestions = suggestions.filter(
+    (item) =>
+      activeCategory &&
+      item.category_name.toLocaleLowerCase("pt-BR") ===
+        activeCategory.name.toLocaleLowerCase("pt-BR") &&
+      !addedSuggestionIds.includes(item.id),
+  );
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:py-12">
+      <div className="mx-auto w-full max-w-4xl">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-primary">VendeFácil · configuração inicial</p>
+            <h1 className="font-display text-2xl font-extrabold sm:text-3xl">
+              Boas-vindas ao seu negócio
+            </h1>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:grid-cols-3">
+          <div className="sm:col-span-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Antes de começar a vender, escolha as categorias do seu estabelecimento e cadastre
+              pelo menos um produto. Você pode usar sugestões globais ou criar seus próprios itens.
+              Essa configuração fica vinculada somente à sua conta.
+            </p>
+          </div>
+          {[
+            { label: "1. Categorias", active: step === "categories", done: categories.length > 0 },
+            { label: "2. Produtos", active: step === "products", done: addedProducts.length > 0 },
+            { label: "3. Começar", active: false, done: false },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${item.active ? "border-primary bg-primary/10 font-bold text-primary" : "border-border bg-background/70 text-muted-foreground"}`}
+            >
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-secondary text-xs">
+                {item.done ? <Check className="h-4 w-4 text-primary" /> : item.label.slice(0, 1)}
+              </span>
+              {item.label}
+            </div>
+          ))}
+        </div>
+
+        {step === "categories" ? (
+          <section className="rounded-3xl border border-border bg-card/80 p-5 shadow-xl sm:p-7">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
+              Etapa 1 de 2
+            </p>
+            <h2 className="mt-2 font-display text-xl font-bold sm:text-2xl">
+              Quais categorias você usa?
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Marque as opções globais que combinam com sua loja ou adicione uma categoria própria.
+            </p>
+            {categoryOptions.length > 0 ? (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {categoryOptions.map((name) => {
+                  const selected = selectedCategoryNames.some(
+                    (item) => item.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"),
+                  );
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleCategory(name)}
+                      className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${selected ? "border-primary bg-primary/10 text-primary" : "border-border bg-background hover:border-primary/50"}`}
+                    >
+                      <span
+                        className={`grid h-5 w-5 place-items-center rounded-md border ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"}`}
+                      >
+                        {selected && <Check className="h-4 w-4" />}
+                      </span>
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-5 rounded-xl bg-secondary/60 p-3 text-sm text-muted-foreground">
+                As opções globais não estão disponíveis no momento. Você ainda pode criar suas
+                próprias categorias abaixo.
+              </p>
+            )}
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={customCategory}
+                onChange={(event) => setCustomCategory(event.target.value)}
+                onKeyDown={(event) =>
+                  event.key === "Enter" && (event.preventDefault(), addCustomCategory())
+                }
+                maxLength={60}
+                placeholder="Nova categoria (ex.: Marmitas)"
+                aria-label="Nome da nova categoria"
+                className="h-12 flex-1 rounded-xl border border-input bg-background px-4 text-sm"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={addCustomCategory}
+                className="h-12 rounded-xl"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Adicionar categoria
+              </Button>
+            </div>
+            {selectedCategoryNames.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2" aria-label="Categorias escolhidas">
+                {selectedCategoryNames.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => toggleCategory(name)}
+                    className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
+                    title="Remover categoria"
+                  >
+                    {name} <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button
+              type="button"
+              onClick={() => void continueToProducts()}
+              disabled={saving || selectedCategoryNames.length === 0}
+              className="neon-button mt-6 h-12 w-full rounded-xl sm:w-auto sm:px-8"
+            >
+              {saving ? "Salvando…" : "Salvar categorias e continuar"}
+            </Button>
+          </section>
+        ) : (
+          <section className="rounded-3xl border border-border bg-card/80 p-5 shadow-xl sm:p-7">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
+              Etapa 2 de 2
+            </p>
+            <h2 className="mt-2 font-display text-xl font-bold sm:text-2xl">
+              Cadastre seus produtos
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Selecione uma categoria e adicione sugestões globais ou crie um produto personalizado.
+              Cadastre pelo menos um para liberar o app.
+            </p>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <label className="flex-1 text-sm font-semibold">
+                Categoria
+                <select
+                  value={activeCategoryId}
+                  onChange={(event) => setActiveCategoryId(event.target.value)}
+                  className="mt-1 h-12 w-full rounded-xl border border-input bg-background px-3"
+                >
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCustomProduct((value) => !value)}
+                className="h-12 rounded-xl sm:mt-6"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Novo produto
+              </Button>
+            </div>
+
+            {showCustomProduct && (
+              <div className="mt-4 grid gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:grid-cols-2">
+                <label className="text-sm font-medium sm:col-span-2">
+                  Nome do produto
+                  <input
+                    value={productName}
+                    onChange={(event) => setProductName(event.target.value)}
+                    maxLength={120}
+                    className="mt-1 h-11 w-full rounded-xl border border-input bg-background px-3"
+                    placeholder="Ex.: Marmita de frango"
+                  />
+                </label>
+                <label className="text-sm font-medium">
+                  Preço de venda
+                  <input
+                    value={productPrice}
+                    onChange={(event) => setProductPrice(event.target.value)}
+                    inputMode="decimal"
+                    className="mt-1 h-11 w-full rounded-xl border border-input bg-background px-3"
+                    placeholder="0,00"
+                  />
+                </label>
+                <label className="text-sm font-medium">
+                  Estoque inicial
+                  <input
+                    value={productStock}
+                    onChange={(event) => setProductStock(event.target.value)}
+                    inputMode="numeric"
+                    className="mt-1 h-11 w-full rounded-xl border border-input bg-background px-3"
+                  />
+                </label>
+                <label className="text-sm font-medium sm:col-span-2">
+                  Descrição (opcional)
+                  <input
+                    value={productDescription}
+                    onChange={(event) => setProductDescription(event.target.value)}
+                    maxLength={500}
+                    className="mt-1 h-11 w-full rounded-xl border border-input bg-background px-3"
+                    placeholder="Detalhes para identificar o item"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={productNeedsKitchen}
+                    onChange={(event) => setProductNeedsKitchen(event.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  Enviar para preparo na cozinha
+                </label>
+                <Button
+                  type="button"
+                  onClick={() => void addCustomProduct()}
+                  disabled={saving || !activeCategoryId}
+                  className="neon-button h-11 rounded-xl sm:col-span-2"
+                >
+                  {saving ? "Salvando…" : "Cadastrar produto"}
+                </Button>
+              </div>
+            )}
+
+            <div className="mt-5">
+              <h3 className="text-sm font-bold">
+                Sugestões globais{activeCategory ? ` · ${activeCategory.name}` : ""}
+              </h3>
+              {visibleSuggestions.length > 0 ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {visibleSuggestions.map((item) => (
+                    <article
+                      key={item.id}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-background/80 p-3"
+                    >
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-xl">
+                        {item.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Preço sugerido {brl(item.suggested_price)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => void addSuggestion(item)}
+                        disabled={saving}
+                        size="sm"
+                        className="rounded-lg"
+                      >
+                        Adicionar
+                      </Button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl bg-secondary/50 p-3 text-sm text-muted-foreground">
+                  Não há sugestões globais nesta categoria
+                  {activeCategory ? ` (${activeCategory.name})` : ""}. Use <b>Novo produto</b> para
+                  cadastrar um item próprio.
+                </p>
+              )}
+            </div>
+
+            {addedProducts.length > 0 && (
+              <div className="mt-5 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                <p className="text-sm font-bold text-primary">
+                  {addedProducts.length} produto(s) cadastrado(s)
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {addedProducts.slice(-4).join(" · ")}
+                </p>
+              </div>
+            )}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-between">
+              {addedProducts.length === 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setStep("categories")}
+                  className="h-12 rounded-xl"
+                >
+                  Voltar às categorias
+                </Button>
+              )}
+              <Button
+                type="button"
+                disabled={addedProducts.length === 0 || saving}
+                onClick={() => window.location.reload()}
+                className="neon-button h-12 rounded-xl sm:px-8"
+              >
+                Começar a usar o VendeFácil <ArrowUp className="ml-2 h-4 w-4 rotate-90" />
+              </Button>
+            </div>
+          </section>
+        )}
+
+        <p className="mt-5 text-center text-xs text-muted-foreground">
+          Seus produtos e categorias são privados e ficam separados dos demais estabelecimentos.
+        </p>
+      </div>
+    </main>
   );
 }
 

@@ -200,6 +200,10 @@ docker compose logs -f app
 
 O cadastro só é concluído depois que o email for aceito pelo SMTP; em caso de falha, a conta recém-criada é removida e a aplicação informa erro. Configure também os registros SPF, DKIM e DMARC do domínio no DNS para melhorar entrega e reduzir rejeições.
 
+### Configuração inicial após verificar o email
+
+No primeiro acesso de um workspace sem catálogo, o app apresenta uma tela de boas-vindas obrigatória. Primeiro, escolha uma ou mais categorias sugeridas pelo catálogo global ou crie categorias próprias. Depois, adicione sugestões globais de produtos ou cadastre itens personalizados, com preço e estoque inicial. É necessário haver ao menos uma categoria e um produto para liberar o PDV. As escolhas são gravadas somente no workspace da conta.
+
 ### Multiusuário
 
 O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do estabelecimento como `owner`; a próxima etapa natural é adicionar convites de operadores e aplicar `workspace_id` nas consultas de produtos, pedidos, turnos e relatórios para isolamento completo entre estabelecimentos.
