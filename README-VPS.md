@@ -21,12 +21,12 @@ Preencha `POSTGRES_PASSWORD` e os três segredos no `.env` com valores fortes e 
 
 Variáveis principais:
 
-| Variável            | Padrão     | Uso                                   |
-| ------------------- | ---------- | ------------------------------------- |
-| `POSTGRES_USER`     | `delivery` | usuário do banco                      |
-| `POSTGRES_PASSWORD` | obrigatório | senha forte e exclusiva do banco      |
-| `POSTGRES_DB`       | `delivery` | nome do banco                         |
-| `APP_PORT`          | `3000`     | porta onde o app fica exposto no VPS  |
+| Variável            | Padrão      | Uso                                  |
+| ------------------- | ----------- | ------------------------------------ |
+| `POSTGRES_USER`     | `delivery`  | usuário do banco                     |
+| `POSTGRES_PASSWORD` | obrigatório | senha forte e exclusiva do banco     |
+| `POSTGRES_DB`       | `delivery`  | nome do banco                        |
+| `APP_PORT`          | `3000`      | porta onde o app fica exposto no VPS |
 
 ## 2. Subir tudo (banco + app)
 
@@ -208,6 +208,9 @@ No primeiro acesso de um workspace sem catálogo, o app apresenta uma tela de bo
 
 O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do estabelecimento como `owner`; a próxima etapa natural é adicionar convites de operadores e aplicar `workspace_id` nas consultas de produtos, pedidos, turnos e relatórios para isolamento completo entre estabelecimentos.
 
+### Auditoria e suporte
+
+O SysAdm registra eventos de conta (cadastro, verificação, login/logout, alteração de perfil/senha), mensagens de suporte e criação de vendas, com usuário, data/hora e IP quando os headers do proxy estão disponíveis. O app reconhece `CF-Connecting-IP`, `X-Real-IP` e o primeiro endereço de `X-Forwarded-For`. Configure o proxy/CDN para sobrescrever esses headers com o endereço real do cliente; não confie em headers encaminhados diretamente por clientes sem filtragem. O chat de suporte é autenticado e separado por usuário.
 
 ## 8. Atualizações do PDV
 

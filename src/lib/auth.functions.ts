@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import { q, q1 } from "./db.server";
 import { getAppSession, getTenantContext } from "./tenant.server";
 import { getUserMessagesAfterLogin } from "./sysadm.functions";
+import { ensureActivitySupportSchema, recordUserActivity } from "./activity-support.server";
 
 const signupSchema = z.object({
   name: z.string().min(2),
@@ -96,6 +97,7 @@ async function sendPinEmail(email: string, pin: string) {
 export const registerAccount = createServerFn({ method: "POST" })
   .validator((data) => signupSchema.parse(data))
   .handler(async ({ data }) => {
+    await ensureActivitySupportSchema();
     const exists = await q1<{ id: string }>(
       "select id from app_users where lower(email)=lower($1) or lower(login)=lower($2)",
       [data.email, data.login],
@@ -129,6 +131,11 @@ export const registerAccount = createServerFn({ method: "POST" })
       await q("delete from workspaces where id=$1", [workspace.id]);
       throw error;
     }
+    await recordUserActivity(
+      user.id,
+      "Cadastro iniciado",
+      "Conta criada e PIN enviado para verificação",
+    );
     return { ok: true as const };
   });
 
@@ -137,6 +144,7 @@ export const verifyAccount = createServerFn({ method: "POST" })
     z.object({ email: z.string().email(), pin: z.string().length(6) }).parse(data),
   )
   .handler(async ({ data }) => {
+    await ensureActivitySupportSchema();
     const user = await q1<{
       id: string;
       name: string;
@@ -148,7 +156,7 @@ export const verifyAccount = createServerFn({ method: "POST" })
     );
     if (!user) throw new Error("PIN inválido ou expirado");
     await q(
-      "update app_users set verified_at=now(),verification_pin=null,pin_expires_at=null where id=$1",
+      "update app_users set verified_at=now(),last_login_at=clock_timestamp(),verification_pin=null,pin_expires_at=null where id=$1",
       [user.id],
     );
     await provisionRoutePasswords(user.workspace_id);
@@ -159,6 +167,7 @@ export const verifyAccount = createServerFn({ method: "POST" })
       name: user.name,
       email: user.email,
     });
+    await recordUserActivity(user.id, "Email verificado", "Conta ativada e sessão iniciada");
     return { ok: true as const, name: user.name, email: user.email };
   });
 
@@ -167,6 +176,7 @@ export const loginAccount = createServerFn({ method: "POST" })
     z.object({ login: z.string().min(3), password: z.string().min(1) }).parse(data),
   )
   .handler(async ({ data }) => {
+    await ensureActivitySupportSchema();
     const user = await q1<{
       id: string;
       name: string;
@@ -191,7 +201,8 @@ export const loginAccount = createServerFn({ method: "POST" })
         `Conta suspensa${user.status_note ? `: ${user.status_note}` : ". Procure o administrador."}`,
       );
     if (!user.verified_at) throw new Error("Confirme seu email antes de entrar");
-    await q("update app_users set last_login_at=now() where id=$1", [user.id]);
+    await q("update app_users set last_login_at=clock_timestamp() where id=$1", [user.id]);
+    await recordUserActivity(user.id, "Login realizado");
     const messages = await getUserMessagesAfterLogin(user.id);
     await provisionRoutePasswords(user.workspace_id);
     const session = await getAppSession();
@@ -205,7 +216,9 @@ export const loginAccount = createServerFn({ method: "POST" })
   });
 
 export const logoutAccount = createServerFn({ method: "POST" }).handler(async () => {
-  await (await getAppSession()).clear();
+  const session = await getAppSession();
+  if (session.data.userId) await recordUserActivity(session.data.userId, "Logout realizado");
+  await session.clear();
   return { ok: true as const };
 });
 
@@ -266,6 +279,7 @@ export const updateUserProfile = createServerFn({ method: "POST" })
     ]);
     const session = await getAppSession();
     await session.update({ ...session.data, name: data.name });
+    await recordUserActivity(ctx.userId, "Perfil atualizado");
     return { ok: true as const };
   });
 
@@ -291,5 +305,6 @@ export const changePassword = createServerFn({ method: "POST" })
       user.id,
       ctx.workspaceId,
     ]);
+    await recordUserActivity(user.id, "Senha alterada");
     return { ok: true as const };
   });

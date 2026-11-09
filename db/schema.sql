@@ -213,6 +213,28 @@ alter table app_users add constraint app_users_status_check check (status in ('a
 create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now());
 insert into sysadm_credentials(id,password_hash) values (1,'0756cbd33bb23eb3c467b8564057c9f693d5fc4b6854de0b8365efdf25c25eb0') on conflict (id) do nothing;
 create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz);
+create table if not exists user_activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references app_users(id) on delete cascade,
+  action text not null,
+  details text,
+  source_ip text,
+  created_at timestamptz not null default now()
+);
+create table if not exists support_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references app_users(id) on delete cascade,
+  sender_role text not null check (sender_role in ('user','sysadm')),
+  message text not null,
+  source_ip text,
+  created_at timestamptz not null default now(),
+  read_by_user_at timestamptz,
+  read_by_sysadm_at timestamptz
+);
+create index if not exists user_activity_logs_created_idx on user_activity_logs(created_at desc);
+create index if not exists user_activity_logs_user_created_idx on user_activity_logs(user_id,created_at desc);
+create index if not exists support_messages_user_created_idx on support_messages(user_id,created_at);
+create index if not exists support_messages_unread_sysadm_idx on support_messages(created_at desc) where sender_role='user' and read_by_sysadm_at is null;
 
 alter table products add column if not exists purchase_price numeric(10,2) not null default 0;
 alter table products add column if not exists min_stock int not null default 5;
@@ -241,11 +263,14 @@ create table if not exists catalog_suggestions (
   created_at timestamptz not null default now(),
   unique (category_name, name)
 );
-create table if not exists global_catalog_categories (
-  id uuid primary key default gen_random_uuid(),
-  name text not null unique,
-  created_at timestamptz not null default now()
-);
+do $$ begin
+  perform pg_advisory_xact_lock(hashtext('vendefacil_global_catalog_categories_v1'));
+  create table if not exists global_catalog_categories (
+    id uuid primary key default gen_random_uuid(),
+    name text not null unique,
+    created_at timestamptz not null default now()
+  );
+end $$;
 alter table catalog_suggestions add column if not exists image_url text;
 alter table products add column if not exists catalog_suggestion_id uuid references catalog_suggestions(id) on delete set null;
 

@@ -92,6 +92,12 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     await client.query(
       "create table if not exists customers (id uuid primary key default gen_random_uuid(), workspace_id uuid references workspaces(id) on delete cascade, name text not null, phone text, email text, credit_balance numeric(10,2) not null default 0, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(workspace_id,name))",
     );
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      "vendefacil_global_catalog_categories_v1",
+    ]);
+    await client.query(
+      "create table if not exists global_catalog_categories (id uuid primary key default gen_random_uuid(), name text not null unique, created_at timestamptz not null default now())",
+    );
     await client.query(
       "create table if not exists catalog_suggestions (id uuid primary key default gen_random_uuid(), category_name text not null, name text not null, description text, suggested_purchase_price numeric(10,2) not null default 0, suggested_price numeric(10,2) not null default 0, icon text not null default 'Package', active boolean not null default true, created_at timestamptz not null default now(), unique(category_name,name))",
     );
@@ -271,6 +277,39 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     );
     await client.query(
       "create table if not exists system_messages (id uuid primary key default gen_random_uuid(), user_id uuid not null references app_users(id) on delete cascade, message text not null, created_at timestamptz not null default now(), read_at timestamptz)",
+    );
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      "vendefacil_activity_support_schema_v1",
+    ]);
+    await client.query(`create table if not exists user_activity_logs (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references app_users(id) on delete cascade,
+      action text not null,
+      details text,
+      source_ip text,
+      created_at timestamptz not null default now()
+    )`);
+    await client.query(`create table if not exists support_messages (
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references app_users(id) on delete cascade,
+      sender_role text not null check (sender_role in ('user','sysadm')),
+      message text not null,
+      source_ip text,
+      created_at timestamptz not null default now(),
+      read_by_user_at timestamptz,
+      read_by_sysadm_at timestamptz
+    )`);
+    await client.query(
+      "create index if not exists user_activity_logs_created_idx on user_activity_logs(created_at desc)",
+    );
+    await client.query(
+      "create index if not exists user_activity_logs_user_created_idx on user_activity_logs(user_id,created_at desc)",
+    );
+    await client.query(
+      "create index if not exists support_messages_user_created_idx on support_messages(user_id,created_at)",
+    );
+    await client.query(
+      "create index if not exists support_messages_unread_sysadm_idx on support_messages(created_at desc) where sender_role='user' and read_by_sysadm_at is null",
     );
     await client.query("alter table catalog_suggestions add column if not exists image_url text");
     await client.query(

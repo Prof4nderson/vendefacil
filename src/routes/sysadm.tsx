@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Search, Tags, Plus, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { brl } from "@/lib/format";
+import { SysadmSupportPanel } from "@/components/sysadm-support-panel";
 import {
   getSysadmSession,
   sysadmLogin,
@@ -13,6 +14,7 @@ import {
   sysadmDeleteUser,
   sysadmSetUserStatus,
   sysadmSendMessage,
+  sysadmListActivity,
   sysadmListProducts,
   sysadmSaveProduct,
   sysadmDeleteProduct,
@@ -23,6 +25,7 @@ import {
   type SysUser,
   type GlobalProduct,
   type GlobalCatalogCategory,
+  type SysActivity,
 } from "@/lib/sysadm.functions";
 
 export const Route = createFileRoute("/sysadm")({
@@ -62,6 +65,7 @@ function SysadmPage() {
   const deleteUser = useServerFn(sysadmDeleteUser);
   const setStatus = useServerFn(sysadmSetUserStatus);
   const sendMessage = useServerFn(sysadmSendMessage);
+  const listActivity = useServerFn(sysadmListActivity);
   const listProducts = useServerFn(sysadmListProducts);
   const saveProduct = useServerFn(sysadmSaveProduct);
   const deleteProduct = useServerFn(sysadmDeleteProduct);
@@ -75,9 +79,11 @@ function SysadmPage() {
   const [users, setUsers] = useState<SysUser[]>([]);
   const [products, setProducts] = useState<GlobalProduct[]>([]);
   const [categories, setCategories] = useState<GlobalCatalogCategory[]>([]);
+  const [activities, setActivities] = useState<SysActivity[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
+  const [activitySearch, setActivitySearch] = useState("");
   const [user, setUser] = useState<typeof blankUser>(blankUser);
   const [editingUserId, setEditingUserId] = useState<string | undefined>();
   const [product, setProduct] = useState<typeof blankProduct>(blankProduct);
@@ -88,18 +94,21 @@ function SysadmPage() {
   const [message, setMessage] = useState("");
   const [sysPassword, setSysPassword] = useState({ currentPassword: "", newPassword: "" });
   const [working, setWorking] = useState(false);
+  const seenRegistrationIds = useRef<Set<string> | null>(null);
 
   const refresh = useCallback(async () => {
     if (!authenticated) return;
     try {
-      const [userRows, productRows, categoryRows] = await Promise.all([
+      const [userRows, productRows, categoryRows, activityRows] = await Promise.all([
         listUsers({ data: { search: userSearch } }),
         listProducts({ data: { search: productSearch } }),
         listCategories(),
+        listActivity({ data: { search: activitySearch } }),
       ]);
       setUsers(userRows);
       setProducts(productRows);
       setCategories(categoryRows);
+      setActivities(activityRows);
       setProduct((current) =>
         current.category_id || !categoryRows[0]
           ? current
@@ -108,12 +117,55 @@ function SysadmPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar SysAdm");
     }
-  }, [authenticated, userSearch, productSearch, listUsers, listProducts, listCategories]);
+  }, [
+    authenticated,
+    userSearch,
+    productSearch,
+    activitySearch,
+    listUsers,
+    listProducts,
+    listCategories,
+    listActivity,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 250);
     return () => window.clearTimeout(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      seenRegistrationIds.current = null;
+      return;
+    }
+    let active = true;
+    const poll = async () => {
+      try {
+        const registrations = await listActivity({ data: { search: "Cadastro iniciado" } });
+        if (!active) return;
+        if (seenRegistrationIds.current === null) {
+          seenRegistrationIds.current = new Set(registrations.map((item) => item.id));
+        } else {
+          const known = seenRegistrationIds.current;
+          for (const item of registrations) {
+            if (!known.has(item.id)) {
+              toast.success(`Novo usuário cadastrado: ${item.user_name}`);
+              known.add(item.id);
+            }
+          }
+        }
+        await refresh();
+      } catch {
+        // O refresh principal apresenta os erros de carregamento ao operador.
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 15000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [authenticated, listActivity, refresh]);
 
   async function enter() {
     try {
@@ -420,6 +472,47 @@ function SysadmPage() {
           </div>
         </section>
 
+        <section className="mt-5 rounded-3xl border border-border bg-card p-5">
+          <h2 className="font-display text-xl font-bold">Atividades dos usuários</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Eventos de cadastro, verificação, login/logout, perfil, senha, suporte e criação de
+            vendas. Últimos 300 resultados.
+          </p>
+          <SearchInput
+            value={activitySearch}
+            onChange={setActivitySearch}
+            placeholder="Pesquisar usuário, ação ou IP"
+          />
+          <div className="mt-3 max-h-96 space-y-2 overflow-y-auto">
+            {activities.map((activity) => (
+              <article key={activity.id} className="rounded-xl border border-border p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-bold">
+                    {activity.user_name}{" "}
+                    <span className="font-normal text-muted-foreground">({activity.login})</span>
+                  </p>
+                  <time className="text-xs text-muted-foreground">
+                    {new Date(activity.created_at).toLocaleString("pt-BR")}
+                  </time>
+                </div>
+                <p className="mt-1 text-sm">
+                  {activity.action}
+                  {activity.details ? ` — ${activity.details}` : ""}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {activity.workspace_name || activity.email} · IP:{" "}
+                  {activity.source_ip || "não informado"}
+                </p>
+              </article>
+            ))}
+            {!activities.length && (
+              <p className="rounded-xl bg-secondary/50 p-3 text-sm text-muted-foreground">
+                Nenhuma atividade registrada para essa pesquisa.
+              </p>
+            )}
+          </div>
+        </section>
+
         <div className="mt-5 grid gap-5 xl:grid-cols-2">
           <section className="rounded-3xl border border-border bg-card p-5">
             <div className="flex items-center gap-2">
@@ -694,6 +787,8 @@ function SysadmPage() {
             </div>
           </section>
         </div>
+
+        <SysadmSupportPanel />
 
         <section className="mt-5 rounded-3xl border border-border bg-card p-5">
           <h2 className="font-display text-xl font-bold">Trocar senha do SysAdm</h2>

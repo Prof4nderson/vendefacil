@@ -4,6 +4,11 @@ import { q, q1, tx } from "./db.server";
 import { getAppSession } from "./tenant.server";
 import { hashPassword, passwordMatches } from "./gate.server";
 import { useSession } from "@tanstack/react-start/server";
+import {
+  ensureActivitySupportSchema,
+  getRequestIp,
+  recordUserActivity,
+} from "./activity-support.server";
 
 const SYSADM_INITIAL_HASH = "0756cbd33bb23eb3c467b8564057c9f693d5fc4b6854de0b8365efdf25c25eb0";
 type SysSession = { authenticated?: boolean };
@@ -66,9 +71,10 @@ export const sysadmListUsers = createServerFn({ method: "GET" })
   .validator((data) => z.object({ search: z.string().max(200).optional() }).parse(data ?? {}))
   .handler(async ({ data }) => {
     await requireSysAdm();
+    await ensureActivitySupportSchema();
     const search = data.search?.trim() ?? "";
     return q<SysUser>(
-      `select u.id,u.workspace_id,w.name workspace_name,u.name,u.login,u.email,u.whatsapp,u.role,u.status,u.status_note,u.verified_at,u.last_login_at,u.created_at,(select count(*) from system_messages m where m.user_id=u.id and m.read_at is null)::int unread_messages
+      `select u.id,u.workspace_id,w.name workspace_name,u.name,u.login,u.email,u.whatsapp,u.role,u.status,u.status_note,u.verified_at,u.last_login_at,u.created_at,((select count(*) from system_messages m where m.user_id=u.id and m.read_at is null)+(select count(*) from support_messages sm where sm.user_id=u.id and sm.sender_role='user' and sm.read_by_sysadm_at is null))::int unread_messages
        from app_users u left join workspaces w on w.id=u.workspace_id
        where $1='' or concat_ws(' ',u.name,u.login,u.email,u.whatsapp,w.name) ilike '%' || $1 || '%'
        order by u.created_at desc limit 500`,
@@ -208,6 +214,100 @@ export const sysadmSendMessage = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export type SysActivity = {
+  id: string;
+  user_name: string;
+  login: string;
+  email: string;
+  workspace_name: string | null;
+  action: string;
+  details: string | null;
+  source_ip: string | null;
+  created_at: string;
+};
+export const sysadmListActivity = createServerFn({ method: "GET" })
+  .validator((data) => z.object({ search: z.string().max(200).optional() }).parse(data ?? {}))
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureActivitySupportSchema();
+    return q<SysActivity>(
+      `select a.id,u.name as user_name,u.login,u.email,w.name as workspace_name,a.action,a.details,a.source_ip,a.created_at
+       from user_activity_logs a join app_users u on u.id=a.user_id
+       left join workspaces w on w.id=u.workspace_id
+       where $1='' or concat_ws(' ',u.name,u.login,u.email,w.name,a.action,a.details,a.source_ip) ilike '%' || $1 || '%'
+       order by a.created_at desc limit 300`,
+      [data.search?.trim() ?? ""],
+    );
+  });
+
+export type SysadmSupportThread = {
+  user_id: string;
+  user_name: string;
+  login: string;
+  email: string;
+  workspace_name: string | null;
+  last_message: string;
+  last_message_at: string;
+  unread_count: number;
+};
+export type SysadmSupportMessage = {
+  id: string;
+  sender_role: "user" | "sysadm";
+  message: string;
+  source_ip: string | null;
+  created_at: string;
+  read_by_sysadm_at: string | null;
+};
+
+export const sysadmListSupportThreads = createServerFn({ method: "GET" }).handler(async () => {
+  await requireSysAdm();
+  await ensureActivitySupportSchema();
+  return q<SysadmSupportThread>(
+    `select u.id as user_id,u.name as user_name,u.login,u.email,w.name as workspace_name,
+       latest.message as last_message,latest.created_at as last_message_at,
+       count(*) filter (where m.sender_role='user' and m.read_by_sysadm_at is null)::int as unread_count
+     from app_users u left join workspaces w on w.id=u.workspace_id
+     join support_messages m on m.user_id=u.id
+     join lateral (select message,created_at from support_messages where user_id=u.id order by created_at desc limit 1) latest on true
+     group by u.id,u.name,u.login,u.email,w.name,latest.message,latest.created_at
+     order by latest.created_at desc limit 200`,
+  );
+});
+
+export const sysadmGetSupportMessages = createServerFn({ method: "GET" })
+  .validator((data) => z.object({ userId: z.string().uuid() }).parse(data))
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureActivitySupportSchema();
+    await q(
+      "update support_messages set read_by_sysadm_at=now() where user_id=$1 and sender_role='user' and read_by_sysadm_at is null",
+      [data.userId],
+    );
+    return q<SysadmSupportMessage>(
+      "select id,sender_role,message,source_ip,created_at,read_by_sysadm_at from (select id,sender_role,message,source_ip,created_at,read_by_sysadm_at from support_messages where user_id=$1 order by created_at desc limit 300) recent order by created_at asc",
+      [data.userId],
+    );
+  });
+
+export const sysadmReplySupport = createServerFn({ method: "POST" })
+  .validator((data) =>
+    z
+      .object({ userId: z.string().uuid(), message: z.string().trim().min(1).max(4000) })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireSysAdm();
+    await ensureActivitySupportSchema();
+    const user = await q1<{ id: string }>("select id from app_users where id=$1", [data.userId]);
+    if (!user) throw new Error("Usuário não encontrado");
+    await q(
+      "insert into support_messages(user_id,sender_role,message,source_ip,read_by_sysadm_at) values($1,'sysadm',$2,$3,now())",
+      [data.userId, data.message, getRequestIp()],
+    );
+    await recordUserActivity(user.id, "Resposta do SysAdm no suporte");
+    return { ok: true as const };
+  });
+
 export type GlobalProduct = {
   id: string;
   category_id: string;
@@ -222,6 +322,9 @@ export type GlobalProduct = {
 };
 async function ensureGlobalCategories() {
   await tx(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      "vendefacil_global_catalog_categories_v1",
+    ]);
     await client.query(
       "create table if not exists global_catalog_categories (id uuid primary key default gen_random_uuid(), name text not null unique, created_at timestamptz not null default now())",
     );

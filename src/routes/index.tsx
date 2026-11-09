@@ -73,6 +73,7 @@ import {
   type SalesSchemaStatus,
 } from "@/lib/schema.functions";
 import { Button } from "@/components/ui/button";
+import { SupportChat } from "@/components/support-chat";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
@@ -851,10 +852,13 @@ function PosPage() {
 
   if (menu.setupRequired)
     return (
-      <CatalogOnboarding
-        suggestions={suggestions as CatalogSuggestion[]}
-        existingCategories={menu.categories as Category[]}
-      />
+      <>
+        <CatalogOnboarding
+          suggestions={suggestions as CatalogSuggestion[]}
+          existingCategories={menu.categories as Category[]}
+        />
+        <SupportChat enabled={Boolean(authenticated && hasAccountSession)} />
+      </>
     );
 
   return (
@@ -2291,6 +2295,7 @@ function PosPage() {
           </div>
         </div>
       )}
+      <SupportChat enabled={Boolean(authenticated && hasAccountSession)} />
     </div>
   );
 }
