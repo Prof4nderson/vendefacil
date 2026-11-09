@@ -101,11 +101,10 @@ export const sysadmSaveUser = createServerFn({ method: "POST" })
           data.role,
           data.status,
           data.status_note?.trim() || null,
-          data.workspace_name.trim(),
           data.id,
         ];
         await client.query(
-          "update app_users set name=$1,login=$2,email=$3,whatsapp=$4,role=$5,status=$6,status_note=$7 where id=$9",
+          "update app_users set name=$1,login=$2,email=$3,whatsapp=$4,role=$5,status=$6,status_note=$7 where id=$8",
           params,
         );
         const user = (
