@@ -358,3 +358,8 @@ on conflict (name) do nothing;
 -- ============ Vendas administráveis ============
 alter table cash_entries add column if not exists voided boolean not null default false;
 create index if not exists orders_cancelled_idx on orders(status, created_at desc);
+-- Adicionando controle de indicação e bônus de pioneirismo na tabela de pedidos coletivos
+ALTER TABLE group_buying_orders 
+ADD COLUMN referral_code VARCHAR(50),
+ADD COLUMN referred_by VARCHAR(50),
+ADD COLUMN is_early_bird BOOLEAN DEFAULT FALSE; -- Para quem garantiu nos primeiros minutos

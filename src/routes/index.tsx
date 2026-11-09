@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
@@ -33,6 +33,10 @@ import {
   WalletCards,
   Wallet,
   X,
+  Flame,
+  ShieldAlert,
+  Trophy,
+  BellRing,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getMenuData, getSettings } from "@/lib/public.functions";
@@ -322,6 +326,13 @@ function PosPage() {
   const [fontScale, setFontScale] = useState(100);
   const [primaryColor, setPrimaryColor] = useState("#00d5ff");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+
+  // Estado para os Pedidos Just-in-Time (JIT) em Tempo Real
+  const [jitOrders, setJitOrders] = useState<Array<{ id: string; customer: string; items: string; time: string; total: number }>>([
+    { id: "jit-101", customer: "Davi (Mesa 3 / JIT)", items: "2x X-Burguer + 1x Coca", time: "Há 1 min", total: 43.8 }
+  ]);
+  const [newJitAlert, setNewJitAlert] = useState(true);
+
   useEffect(() => {
     const storedUser = window.localStorage.getItem("vendefacil-user") || "";
     setAuthenticated(storedUser);
@@ -334,11 +345,33 @@ function PosPage() {
     setPrimaryColor(window.localStorage.getItem("vendefacil-primary-color") || "#00d5ff");
     setPreferencesLoaded(true);
   }, []);
+
+  // Simulação de polling em tempo real JIT (WebSocket / Server-Sent Events stub)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Exemplo de chegada automática de pedido JIT a cada 45 segundos para teste vivo
+      const demoIncoming = Math.random() > 0.7;
+      if (demoIncoming) {
+        const newId = `jit-${Date.now().toString().slice(-3)}`;
+        setJitOrders((prev) => [
+          { id: newId, customer: "Cliente JIT (App)", items: "1x Coxinha + 1x Suco", time: "Agora", total: 16.5 },
+          ...prev,
+        ]);
+        setNewJitAlert(true);
+        toast.info("🚨 Novo pedido Just-in-Time recebido na praça!", {
+          description: "Cliente solicitou entrega prioritária JIT.",
+        });
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (!preferencesLoaded) return;
     localStorage.setItem("vendefacil-font-scale", String(fontScale));
     localStorage.setItem("vendefacil-primary-color", primaryColor);
   }, [fontScale, primaryColor, preferencesLoaded]);
+
   useEffect(() => {
     let active = true;
     void loadCustomerSummaries()
@@ -417,6 +450,7 @@ function PosPage() {
       ),
     );
   }
+
   function newCustomer() {
     const id = `c-${Date.now()}`;
     const name =
@@ -431,32 +465,7 @@ function PosPage() {
     setActiveCustomer(id);
     setCart({});
   }
-  async function saveOpenOrder(customer: Customer) {
-    if (!cartItems.length) return;
-    setOpening(true);
-    try {
-      await submitOrder({
-        data: {
-          customer_name: customer.name,
-          customer_phone: "000000000",
-          order_type: "dine_in",
-          payment_method: "Pendente",
-          save_open: true,
-          items: cartItems.map((i) => ({
-            product_id: i.product.id,
-            qty: i.qty,
-          })),
-        },
-      });
-      setCart({});
-      toast.success(`Pedido de ${customer.name} salvo em aberto`);
-      await inspectCustomer(customer);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível salvar o pedido");
-    } finally {
-      setOpening(false);
-    }
-  }
+
   async function openSale() {
     if (!cartItems.length) {
       setShowSaleCustomer(false);
@@ -467,6 +476,7 @@ function PosPage() {
     setCustomerNameDraft("");
     setShowSaleCustomer(true);
   }
+
   async function selectSaleCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
     setSelectingSaleCustomer(false);
@@ -475,6 +485,7 @@ function PosPage() {
     setSelectingFinalizationCustomer(false);
     setShowPayment(true);
   }
+
   async function addNamedCustomer() {
     const name = customerNameDraft.trim();
     if (!name) return toast.error("Informe o nome do cliente");
@@ -498,6 +509,7 @@ function PosPage() {
     setSelectingFinalizationCustomer(false);
     setShowPayment(true);
   }
+
   async function inspectCustomer(customer: Customer) {
     setActiveCustomer(customer.id);
     setShowCustomerPanel(true);
@@ -510,6 +522,7 @@ function PosPage() {
       setLoadingCustomerSales(false);
     }
   }
+
   async function finishOpenSale(orderId: string) {
     try {
       await finalizeSale({ data: { orderId } });
@@ -526,6 +539,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Não foi possível finalizar");
     }
   }
+
   async function cancelOpenCustomerSale(orderId: string) {
     if (!window.confirm("Cancelar este pedido aberto?")) return;
     try {
@@ -536,6 +550,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Não foi possível cancelar");
     }
   }
+
   function startEditingSale(sale: SaleRow) {
     if (sale.items.some((item) => !item.product_id))
       return toast.error("Aplique a migração do banco para editar este pedido");
@@ -549,6 +564,7 @@ function PosPage() {
       })),
     );
   }
+
   async function saveEditingSale() {
     if (!editingSaleId) return;
     try {
@@ -570,6 +586,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Não foi possível atualizar");
     }
   }
+
   async function openSchemaTool() {
     setShowMenu(false);
     setShowSchemaTool(true);
@@ -588,6 +605,7 @@ function PosPage() {
       setSchemaWorking(false);
     }
   }
+
   async function applySchemaMigration() {
     setSchemaWorking(true);
     try {
@@ -604,6 +622,7 @@ function PosPage() {
       setSchemaWorking(false);
     }
   }
+
   async function handleOpenShift() {
     try {
       await startShift({
@@ -621,6 +640,7 @@ function PosPage() {
       } else toast.error(e instanceof Error ? e.message : "Não foi possível abrir o turno");
     }
   }
+
   async function checkout() {
     if (!cartItems.length && !openCustomerSales.length && !currentCustomer.credit)
       return toast.error("Adicione produtos ou selecione um consumo em aberto");
@@ -687,6 +707,7 @@ function PosPage() {
       setOpening(false);
     }
   }
+
   async function doSignup() {
     try {
       await register({
@@ -704,6 +725,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Falha ao cadastrar");
     }
   }
+
   async function doVerify() {
     try {
       await verify({ data: { email: authData.email, pin: authData.pin } });
@@ -719,6 +741,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "PIN inválido");
     }
   }
+
   async function doLogin() {
     try {
       const result = await login({
@@ -737,6 +760,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Login inválido");
     }
   }
+
   async function openProfile() {
     setShowMenu(false);
     setShowProfile(true);
@@ -752,6 +776,7 @@ function PosPage() {
       setProfile((old) => ({ ...old, email }));
     }
   }
+
   async function lookupCep(value: string) {
     const cep = value.replace(/\D/g, "");
     setProfile((old) => ({ ...old, cep: value }));
@@ -770,6 +795,7 @@ function PosPage() {
       toast.error("Não foi possível consultar o CEP");
     }
   }
+
   async function saveProfile() {
     if (!profile.email) return toast.error("Confirme o email da conta antes de salvar");
     setProfileWorking(true);
@@ -784,6 +810,7 @@ function PosPage() {
       setProfileWorking(false);
     }
   }
+
   async function savePassword() {
     if (passwordPinSent) {
       if (!/^\d{6}$/.test(passwordData.pin))
@@ -827,6 +854,7 @@ function PosPage() {
       setProfileWorking(false);
     }
   }
+
   async function downloadBackup() {
     try {
       const backup = await makeBackup();
@@ -844,6 +872,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Não foi possível fazer a cópia");
     }
   }
+
   async function uploadBackup(file: File) {
     if (
       !window.confirm(
@@ -860,6 +889,7 @@ function PosPage() {
       toast.error(e instanceof Error ? e.message : "Cópia inválida ou não foi possível restaurar");
     }
   }
+
   async function logoff() {
     await logout().catch(() => undefined);
     setCart({});
@@ -1076,8 +1106,120 @@ function PosPage() {
           )}
         </div>
       </header>
+
+      {/* Barreira de Alerta de Compras e Acessos Rápidos do QG do Davi */}
+      <div className="mx-auto max-w-[1500px] px-4 pt-4 md:px-8">
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Link
+            to="/compras-coletivas"
+            className="glass-card flex flex-col justify-between rounded-2xl p-3.5 border border-cyan-500/30 hover:border-cyan-500 transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
+                <Flame className="h-4 w-4 text-amber-400 animate-pulse" />
+              </span>
+              <span className="text-[0.6rem] font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">
+                B2B
+              </span>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-xs font-black">Alibaba Coletivo</h3>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Desconto por volume</p>
+            </div>
+          </Link>
+
+          <Link
+            to="/radar-socorro"
+            className="glass-card flex flex-col justify-between rounded-2xl p-3.5 border border-red-500/30 hover:border-red-500 transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-red-500/10 text-red-400 group-hover:scale-110 transition-transform">
+                <ShieldAlert className="h-4 w-4" />
+              </span>
+              <span className="text-[0.6rem] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full">
+                P2P
+              </span>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-xs font-black">Radar de Socorro</h3>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Estoque cruzado</p>
+            </div>
+          </Link>
+
+          <Link
+            to="/pedidos-a-caminho"
+            className="glass-card flex flex-col justify-between rounded-2xl p-3.5 border border-primary/30 hover:border-primary transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary group-hover:scale-110 transition-transform relative">
+                <Bike className="h-4 w-4" />
+                {newJitAlert && (
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                  </span>
+                )}
+              </span>
+              <span className="text-[0.6rem] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                JIT {jitOrders.length > 0 && `(${jitOrders.length})`}
+              </span>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-xs font-black">A Caminho (JIT)</h3>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Notificação em tempo real</p>
+            </div>
+          </Link>
+
+          <Link
+            to="/ranking-amigos"
+            className="glass-card flex flex-col justify-between rounded-2xl p-3.5 border border-amber-500/30 hover:border-amber-500 transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-amber-500/10 text-amber-400 group-hover:scale-110 transition-transform">
+                <Trophy className="h-4 w-4" />
+              </span>
+              <span className="text-[0.6rem] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                Karma
+              </span>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-xs font-black">Ranking da Praça</h3>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Medalhas e pontos</p>
+            </div>
+          </Link>
+        </section>
+      </div>
+
+      {/* Ticker de Notificações JIT em Tempo Real (Ativo no topo do PDV) */}
+      <div className="mx-auto max-w-[1500px] px-4 pt-3 md:px-8">
+        <div className="flex items-center justify-between rounded-2xl border border-primary/40 bg-primary/10 p-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+            </span>
+            <div className="flex items-center gap-2">
+              <BellRing className="h-4 w-4 text-primary animate-bounce" />
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">Radar JIT Ativo:</span>
+              <span className="text-xs font-medium text-foreground">
+                {jitOrders.length > 0 ? `${jitOrders.length} pedido(s) antecipado(s) aguardando despacho.` : "Nenhum pedido JIT pendente."}
+              </span>
+            </div>
+          </div>
+          {jitOrders.length > 0 && (
+            <Link
+              to="/pedidos-a-caminho"
+              onClick={() => setNewJitAlert(false)}
+              className="rounded-xl bg-primary px-3 py-1 text-xs font-black text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              Verificar JIT
+            </Link>
+          )}
+        </div>
+      </div>
+
       {(count > 0 || openCustomerSales.length > 0 || currentCustomer.credit > 0) && (
-        <div className="sticky top-[68px] z-10 border-b border-primary/20 bg-background/95 px-4 py-2 backdrop-blur-xl md:px-8">
+        <div className="sticky top-[68px] z-10 border-b border-primary/20 bg-background/95 px-4 py-2 backdrop-blur-xl md:px-8 mt-4">
           <div className="mx-auto flex max-w-[1500px] items-center gap-3">
             <ShoppingCart className="h-4 w-4 shrink-0 text-primary" />
             <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
