@@ -86,7 +86,7 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
         type="button"
         aria-label="Abrir suporte"
         onClick={() => setOpen((value) => !value)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 font-bold text-primary-foreground shadow-xl"
+        className="fixed bottom-24 right-5 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 font-bold text-primary-foreground shadow-xl"
       >
         <MessageCircle className="h-5 w-5" /> Suporte
         {unread > 0 && (
@@ -96,7 +96,7 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
         )}
       </button>
       {open && (
-        <section className="fixed bottom-20 right-4 z-50 flex h-[min(520px,calc(100vh-7rem))] w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section className="fixed bottom-36 right-4 z-50 flex h-[min(520px,calc(100vh-11rem))] w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
           <header className="flex items-center gap-3 border-b border-border p-4">
             <div className="min-w-0 flex-1">
               <p className="font-display font-bold">Suporte VendeFácil</p>
