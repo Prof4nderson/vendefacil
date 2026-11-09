@@ -21,7 +21,8 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingError, setLoadingError] = useState("");
-  const bottom = useRef<HTMLDivElement>(null);
+  const messagesPane = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
   useEffect(() => {
     if (!enabled) return;
@@ -54,7 +55,8 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
   }, [enabled, open, loadMessages, loadUnread]);
 
   useEffect(() => {
-    if (open) bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const pane = messagesPane.current;
+    if (open && pane && stickToBottom.current) pane.scrollTop = pane.scrollHeight;
   }, [messages, open]);
 
   async function submit() {
@@ -65,6 +67,7 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
       await send({ data: { message } });
       setDraft("");
       setLoadingError("");
+      stickToBottom.current = true;
       const rows = await loadMessages();
       setMessages(rows);
       setUnread(0);
@@ -108,7 +111,14 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
               <X className="h-4 w-4" />
             </button>
           </header>
-          <div className="flex-1 space-y-3 overflow-y-auto p-3">
+          <div
+            ref={messagesPane}
+            onScroll={(event) => {
+              const pane = event.currentTarget;
+              stickToBottom.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
+            }}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+          >
             {loadingError && (
               <p className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
                 {loadingError}
@@ -133,7 +143,6 @@ export function SupportChat({ enabled }: { enabled: boolean }) {
                 </p>
               </div>
             ))}
-            <div ref={bottom} />
           </div>
           <form
             className="flex items-end gap-2 border-t border-border p-3"

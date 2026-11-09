@@ -208,6 +208,11 @@ create table if not exists app_users (
 alter table app_users add column if not exists status text not null default 'active';
 alter table app_users add column if not exists status_note text;
 alter table app_users add column if not exists last_login_at timestamptz;
+alter table app_users add column if not exists pending_password_hash text;
+alter table app_users add column if not exists password_change_pin_hash text;
+alter table app_users add column if not exists password_change_pin_expires_at timestamptz;
+alter table app_users add column if not exists password_change_attempts int not null default 0;
+alter table app_users add column if not exists password_change_sent_at timestamptz;
 alter table app_users drop constraint if exists app_users_status_check;
 alter table app_users add constraint app_users_status_check check (status in ('active','disabled','suspended'));
 create table if not exists sysadm_credentials (id smallint primary key check (id=1), password_hash text not null, updated_at timestamptz not null default now());

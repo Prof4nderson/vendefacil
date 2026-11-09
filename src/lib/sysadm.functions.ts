@@ -97,6 +97,7 @@ export const sysadmSaveUser = createServerFn({ method: "POST" })
   .validator((data) => userInput.parse(data))
   .handler(async ({ data }) => {
     await requireSysAdm();
+    await ensureActivitySupportSchema();
     return tx(async (client) => {
       if (data.id) {
         const params = [
@@ -125,10 +126,12 @@ export const sysadmSaveUser = createServerFn({ method: "POST" })
           user.workspace_id,
         ]);
         if (data.password)
-          await client.query("update app_users set password_hash=$1 where id=$2", [
-            hashPassword(data.password),
-            data.id,
-          ]);
+          await client.query(
+            `update app_users set password_hash=$1,pending_password_hash=null,
+               password_change_pin_hash=null,password_change_pin_expires_at=null,
+               password_change_attempts=0 where id=$2`,
+            [hashPassword(data.password), data.id],
+          );
         return { ok: true as const, id: data.id };
       }
       if (!data.password) throw new Error("Defina uma senha inicial para o novo usuário");

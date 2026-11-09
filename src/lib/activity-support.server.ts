@@ -30,6 +30,21 @@ export function ensureActivitySupportSchema(): Promise<void> {
       await client.query(
         "alter table app_users add column if not exists last_login_at timestamptz",
       );
+      await client.query(
+        "alter table app_users add column if not exists pending_password_hash text",
+      );
+      await client.query(
+        "alter table app_users add column if not exists password_change_pin_hash text",
+      );
+      await client.query(
+        "alter table app_users add column if not exists password_change_pin_expires_at timestamptz",
+      );
+      await client.query(
+        "alter table app_users add column if not exists password_change_attempts int not null default 0",
+      );
+      await client.query(
+        "alter table app_users add column if not exists password_change_sent_at timestamptz",
+      );
       await client.query(`create table if not exists user_activity_logs (
       id uuid primary key default gen_random_uuid(),
       user_id uuid not null references app_users(id) on delete cascade,

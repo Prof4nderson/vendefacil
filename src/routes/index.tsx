@@ -50,6 +50,8 @@ import { openPosShift } from "@/lib/ops.functions";
 import {
   getUserProfile,
   changePassword,
+  confirmPasswordChange,
+  cancelPasswordChange,
   loginAccount,
   logoutAccount,
   registerAccount,
@@ -220,6 +222,8 @@ function PosPage() {
   const register = useServerFn(registerAccount);
   const login = useServerFn(loginAccount);
   const changeUserPassword = useServerFn(changePassword);
+  const confirmUserPasswordChange = useServerFn(confirmPasswordChange);
+  const cancelUserPasswordChange = useServerFn(cancelPasswordChange);
   const makeBackup = useServerFn(createWorkspaceBackup);
   const restoreBackup = useServerFn(restoreWorkspaceBackup);
   const logout = useServerFn(logoutAccount);
@@ -298,7 +302,9 @@ function PosPage() {
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
+    pin: "",
   });
+  const [passwordPinSent, setPasswordPinSent] = useState(false);
   const [profile, setProfile] = useState({
     name: "",
     establishment_name: "",
@@ -779,26 +785,44 @@ function PosPage() {
     }
   }
   async function savePassword() {
+    if (passwordPinSent) {
+      if (!/^\d{6}$/.test(passwordData.pin))
+        return toast.error("Digite o PIN de 6 dígitos enviado ao email da conta");
+      setProfileWorking(true);
+      try {
+        await confirmUserPasswordChange({ data: { pin: passwordData.pin } });
+        setPasswordPinSent(false);
+        setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "", pin: "" });
+        toast.success("Senha alterada após confirmação por email");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "PIN inválido";
+        if (/expirado|limite de tentativas|não há troca/i.test(message)) {
+          setPasswordPinSent(false);
+          setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "", pin: "" });
+        }
+        toast.error(message);
+      } finally {
+        setProfileWorking(false);
+      }
+      return;
+    }
     if (passwordData.newPassword !== passwordData.confirmPassword)
       return toast.error("A confirmação da nova senha não confere");
     if (passwordData.newPassword.length < 6)
       return toast.error("A nova senha deve ter pelo menos 6 caracteres");
     setProfileWorking(true);
     try {
-      await changeUserPassword({
+      const result = await changeUserPassword({
         data: {
           currentPassword: passwordData.currentPassword,
           newPassword: passwordData.newPassword,
         },
       });
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-      toast.success("Senha alterada com sucesso");
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "", pin: "" });
+      setPasswordPinSent(true);
+      toast.success(`PIN enviado para ${result.email}. Confirme para efetivar a troca.`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível alterar a senha");
+      toast.error(e instanceof Error ? e.message : "Não foi possível solicitar a troca de senha");
     } finally {
       setProfileWorking(false);
     }
@@ -1643,51 +1667,116 @@ function PosPage() {
             </div>
             <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <h3 className="font-bold">Trocar senha</h3>
-              <div className="mt-3 grid gap-2">
-                <input
-                  type="password"
-                  placeholder="Senha atual"
-                  value={passwordData.currentPassword}
-                  onChange={(e) =>
-                    setPasswordData({
-                      ...passwordData,
-                      currentPassword: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                />
-                <input
-                  type="password"
-                  placeholder="Nova senha (mín. 6 caracteres)"
-                  value={passwordData.newPassword}
-                  onChange={(e) =>
-                    setPasswordData({
-                      ...passwordData,
-                      newPassword: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                />
-                <input
-                  type="password"
-                  placeholder="Confirmar nova senha"
-                  value={passwordData.confirmPassword}
-                  onChange={(e) =>
-                    setPasswordData({
-                      ...passwordData,
-                      confirmPassword: e.target.value,
-                    })
-                  }
-                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                />
-              </div>
-              <Button
-                onClick={savePassword}
-                disabled={profileWorking}
-                className="mt-3 h-10 w-full rounded-xl"
-              >
-                Alterar senha
-              </Button>
+              {passwordPinSent ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Enviamos um PIN para <b>{profile.email}</b>. A senha só será alterada depois da
+                    confirmação; o código expira em 10 minutos.
+                  </p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="PIN de 6 dígitos"
+                    value={passwordData.pin}
+                    onChange={(e) =>
+                      setPasswordData({
+                        ...passwordData,
+                        pin: e.target.value.replace(/\D/g, "").slice(0, 6),
+                      })
+                    }
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm tracking-[0.3em]"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={savePassword}
+                      disabled={profileWorking || passwordData.pin.length !== 6}
+                      className="h-10 rounded-xl"
+                    >
+                      Confirmar PIN
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={profileWorking}
+                      onClick={async () => {
+                        setProfileWorking(true);
+                        try {
+                          await cancelUserPasswordChange();
+                          setPasswordPinSent(false);
+                          setPasswordData({
+                            currentPassword: "",
+                            newPassword: "",
+                            confirmPassword: "",
+                            pin: "",
+                          });
+                          toast.info("Solicitação de troca de senha cancelada");
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : "Não foi possível cancelar",
+                          );
+                        } finally {
+                          setProfileWorking(false);
+                        }
+                      }}
+                      className="h-10 rounded-xl"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-3 grid gap-2">
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      placeholder="Senha atual"
+                      value={passwordData.currentPassword}
+                      onChange={(e) =>
+                        setPasswordData({
+                          ...passwordData,
+                          currentPassword: e.target.value,
+                        })
+                      }
+                      className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    />
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Nova senha (mín. 6 caracteres)"
+                      value={passwordData.newPassword}
+                      onChange={(e) =>
+                        setPasswordData({
+                          ...passwordData,
+                          newPassword: e.target.value,
+                        })
+                      }
+                      className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    />
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Confirmar nova senha"
+                      value={passwordData.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordData({
+                          ...passwordData,
+                          confirmPassword: e.target.value,
+                        })
+                      }
+                      className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    />
+                  </div>
+                  <Button
+                    onClick={savePassword}
+                    disabled={profileWorking}
+                    className="mt-3 h-10 w-full rounded-xl"
+                  >
+                    Enviar PIN por email
+                  </Button>
+                </>
+              )}
             </div>
             <Button
               onClick={saveProfile}

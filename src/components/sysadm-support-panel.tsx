@@ -23,7 +23,8 @@ export function SysadmSupportPanel() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const seenUnread = useRef<Map<string, number> | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const messagesPane = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -72,13 +73,15 @@ export function SysadmSupportPanel() {
 
   useEffect(() => {
     if (!selectedUserId) return;
+    stickToBottom.current = true;
     void refreshMessages(selectedUserId);
     const timer = window.setInterval(() => void refreshMessages(selectedUserId), 5000);
     return () => window.clearInterval(timer);
   }, [selectedUserId, refreshMessages]);
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const pane = messagesPane.current;
+    if (pane && stickToBottom.current) pane.scrollTop = pane.scrollHeight;
   }, [messages]);
 
   async function sendReply() {
@@ -88,6 +91,7 @@ export function SysadmSupportPanel() {
     try {
       await reply({ data: { userId: selectedUserId, message: text } });
       setDraft("");
+      stickToBottom.current = true;
       await refreshMessages(selectedUserId);
       await refreshThreads();
     } catch (error) {
@@ -108,8 +112,8 @@ export function SysadmSupportPanel() {
           {threads.reduce((total, thread) => total + (thread.unread_count ?? 0), 0)} não lida(s)
         </span>
       </div>
-      <div className="grid min-h-[430px] overflow-hidden rounded-2xl border border-border md:grid-cols-[250px_minmax(0,1fr)]">
-        <div className="max-h-[430px] overflow-y-auto border-b border-border md:border-b-0 md:border-r">
+      <div className="grid h-[430px] grid-rows-[130px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-border md:grid-cols-[250px_minmax(0,1fr)] md:grid-rows-1">
+        <div className="min-h-0 overflow-y-auto border-b border-border md:border-b-0 md:border-r">
           {loading && <p className="p-4 text-sm text-muted-foreground">Carregando conversas…</p>}
           {!loading && !threads.length && (
             <p className="p-4 text-sm text-muted-foreground">Nenhuma conversa de suporte.</p>
@@ -140,7 +144,7 @@ export function SysadmSupportPanel() {
             </button>
           ))}
         </div>
-        <div className="flex min-h-[430px] flex-col">
+        <div className="flex min-h-0 flex-col">
           {selected ? (
             <>
               <header className="border-b border-border p-3">
@@ -149,7 +153,15 @@ export function SysadmSupportPanel() {
                 </p>
                 <p className="text-xs text-muted-foreground">{selected.email}</p>
               </header>
-              <div className="flex-1 space-y-3 overflow-y-auto p-3">
+              <div
+                ref={messagesPane}
+                onScroll={(event) => {
+                  const pane = event.currentTarget;
+                  stickToBottom.current =
+                    pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
+                }}
+                className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+              >
                 {messages.map((item) => (
                   <div
                     key={item.id}
@@ -167,7 +179,6 @@ export function SysadmSupportPanel() {
                     </p>
                   </div>
                 ))}
-                <div ref={bottom} />
               </div>
               <form
                 className="flex items-end gap-2 border-t border-border p-3"

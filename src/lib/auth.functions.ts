@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHash, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
-import { q, q1 } from "./db.server";
+import { q, q1, tx } from "./db.server";
 import { getAppSession, getTenantContext } from "./tenant.server";
 import { getUserMessagesAfterLogin } from "./sysadm.functions";
 import { ensureActivitySupportSchema, recordUserActivity } from "./activity-support.server";
@@ -19,6 +19,19 @@ const matchesHash = (value: string, expectedHash: string) => {
   if (!/^[a-f0-9]{64}$/i.test(expectedHash)) return false;
   return timingSafeEqual(Buffer.from(hash(value), "hex"), Buffer.from(expectedHash, "hex"));
 };
+function passwordChangePinHash(pin: string) {
+  const secret = process.env["ACCOUNT_SESSION_SECRET"];
+  if (!secret || secret.length < 32)
+    throw new Error("Configure ACCOUNT_SESSION_SECRET para confirmar a troca de senha");
+  return createHmac("sha256", secret).update(`vendefacil-password-change:${pin}`).digest("hex");
+}
+function matchesPasswordChangePin(pin: string, expectedHash: string) {
+  if (!/^[a-f0-9]{64}$/i.test(expectedHash)) return false;
+  return timingSafeEqual(
+    Buffer.from(passwordChangePinHash(pin), "hex"),
+    Buffer.from(expectedHash, "hex"),
+  );
+}
 async function provisionRoutePasswords(workspaceId: string) {
   await q(
     `insert into route_passwords (workspace_id, route, password_hash) values
@@ -30,9 +43,22 @@ async function provisionRoutePasswords(workspaceId: string) {
     [workspaceId],
   );
 }
-async function sendPinEmail(email: string, pin: string) {
-  const subject = "Seu PIN de ativação — VendeFácil";
-  const text = `Seu código de confirmação é ${pin}. Ele expira em 15 minutos.`;
+async function sendPinEmail(
+  email: string,
+  pin: string,
+  purpose: "activation" | "password_change" = "activation",
+) {
+  const passwordChange = purpose === "password_change";
+  const subject = passwordChange
+    ? "Confirme a troca de senha — VendeFácil"
+    : "Seu PIN de ativação — VendeFácil";
+  const text = passwordChange
+    ? `Seu PIN para confirmar a troca de senha é ${pin}. Ele expira em 10 minutos. Se você não solicitou a troca, ignore esta mensagem.`
+    : `Seu código de confirmação é ${pin}. Ele expira em 15 minutos.`;
+  const emailHeading = passwordChange ? "Confirme a troca de senha" : "Ative sua conta";
+  const expirationText = passwordChange
+    ? "Este PIN expira em 10 minutos."
+    : "Este código expira em 15 minutos.";
   const host = process.env["SMTP_HOST"] || "mail.professor-anderson.com";
   const port = Number(process.env["SMTP_PORT"] || "587");
   const user = process.env["SMTP_USER"];
@@ -69,7 +95,7 @@ async function sendPinEmail(email: string, pin: string) {
       to: email,
       subject,
       text,
-      html: `<div style="font-family:Arial,sans-serif"><h2>VendeFácil</h2><p>Seu PIN de confirmação é:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${pin}</p><p>Este código expira em 15 minutos.</p></div>`,
+      html: `<div style="font-family:Arial,sans-serif"><h2>VendeFácil</h2><p>${emailHeading}</p><p>Seu PIN de confirmação é:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${pin}</p><p>${expirationText}</p>${passwordChange ? "<p>Se você não solicitou a troca, ignore esta mensagem.</p>" : ""}</div>`,
     });
   } catch (error) {
     const smtpError = error as NodeJS.ErrnoException & {
@@ -294,17 +320,133 @@ export const changePassword = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await getTenantContext();
-    const user = await q1<{ id: string; password_hash: string }>(
-      "select id,password_hash from app_users where id=$1 and workspace_id=$2",
-      [ctx.userId, ctx.workspaceId],
-    );
-    if (!user || !matchesHash(data.currentPassword, user.password_hash))
-      throw new Error("Senha atual inválida");
-    await q("update app_users set password_hash=$1 where id=$2 and workspace_id=$3", [
-      hash(data.newPassword),
-      user.id,
+    await ensureActivitySupportSchema();
+    const user = await q1<{
+      id: string;
+      email: string;
+      password_hash: string;
+      verified_at: string | null;
+    }>("select id,email,password_hash,verified_at from app_users where id=$1 and workspace_id=$2", [
+      ctx.userId,
       ctx.workspaceId,
     ]);
-    await recordUserActivity(user.id, "Senha alterada");
+    if (!user || !matchesHash(data.currentPassword, user.password_hash))
+      throw new Error("Senha atual inválida");
+    if (!user.verified_at) throw new Error("Confirme o email da conta antes de trocar a senha");
+    if (matchesHash(data.newPassword, user.password_hash))
+      throw new Error("A nova senha deve ser diferente da senha atual");
+
+    const pin = String(randomInt(100000, 1_000_000));
+    const pinHash = passwordChangePinHash(pin);
+    const pendingPasswordHash = hash(data.newPassword);
+    const updated = await q1<{ email: string }>(
+      `update app_users
+       set pending_password_hash=$1,password_change_pin_hash=$2,
+           password_change_pin_expires_at=now()+interval '10 minutes',
+           password_change_attempts=0,password_change_sent_at=now()
+       where id=$3 and workspace_id=$4
+         and (password_change_sent_at is null or password_change_sent_at < now()-interval '60 seconds')
+       returning email`,
+      [pendingPasswordHash, pinHash, user.id, ctx.workspaceId],
+    );
+    if (!updated)
+      throw new Error("Aguarde 60 segundos antes de solicitar outro PIN de troca de senha");
+
+    try {
+      await sendPinEmail(updated.email, pin, "password_change");
+    } catch (error) {
+      await q(
+        `update app_users set pending_password_hash=null,password_change_pin_hash=null,
+           password_change_pin_expires_at=null,password_change_attempts=0
+         where id=$1 and password_change_pin_hash=$2`,
+        [user.id, pinHash],
+      );
+      throw error;
+    }
+
+    await recordUserActivity(user.id, "PIN para troca de senha enviado");
+    return { ok: true as const, email: updated.email };
+  });
+
+export const confirmPasswordChange = createServerFn({ method: "POST" })
+  .validator((data) => z.object({ pin: z.string().regex(/^\d{6}$/) }).parse(data))
+  .handler(async ({ data }) => {
+    const { userId } = await getTenantContext();
+    await ensureActivitySupportSchema();
+    const outcome = await tx(async (client) => {
+      const { rows } = await client.query<{
+        pending_password_hash: string | null;
+        password_change_pin_hash: string | null;
+        pin_valid: boolean | null;
+        attempts: number;
+      }>(
+        `select pending_password_hash,password_change_pin_hash,
+           password_change_pin_expires_at > now() as pin_valid,
+           coalesce(password_change_attempts,0)::int as attempts
+         from app_users where id=$1 for update`,
+        [userId],
+      );
+      const pending = rows[0];
+      if (!pending?.pending_password_hash || !pending.password_change_pin_hash)
+        return { ok: false as const, reason: "missing" as const };
+
+      const clearPending = async () => {
+        await client.query(
+          `update app_users set pending_password_hash=null,password_change_pin_hash=null,
+             password_change_pin_expires_at=null,password_change_attempts=0 where id=$1`,
+          [userId],
+        );
+      };
+      if (!pending.pin_valid) {
+        await clearPending();
+        return { ok: false as const, reason: "expired" as const };
+      }
+      if (pending.attempts >= 5) {
+        await clearPending();
+        return { ok: false as const, reason: "attempts" as const };
+      }
+      if (!matchesPasswordChangePin(data.pin, pending.password_change_pin_hash)) {
+        const attempts = pending.attempts + 1;
+        if (attempts >= 5) await clearPending();
+        else
+          await client.query("update app_users set password_change_attempts=$1 where id=$2", [
+            attempts,
+            userId,
+          ]);
+        return {
+          ok: false as const,
+          reason: attempts >= 5 ? ("attempts" as const) : ("invalid" as const),
+        };
+      }
+
+      await client.query(
+        `update app_users set password_hash=pending_password_hash,pending_password_hash=null,
+           password_change_pin_hash=null,password_change_pin_expires_at=null,
+           password_change_attempts=0 where id=$1`,
+        [userId],
+      );
+      return { ok: true as const };
+    });
+
+    if (!outcome.ok) {
+      if (outcome.reason === "attempts")
+        throw new Error("Limite de tentativas atingido. Solicite um novo PIN.");
+      if (outcome.reason === "expired") throw new Error("PIN expirado. Solicite um novo PIN.");
+      if (outcome.reason === "missing")
+        throw new Error("Não há troca de senha pendente. Solicite um PIN.");
+      throw new Error("PIN inválido");
+    }
+    await recordUserActivity(userId, "Senha alterada após confirmação por email");
     return { ok: true as const };
   });
+
+export const cancelPasswordChange = createServerFn({ method: "POST" }).handler(async () => {
+  const { userId } = await getTenantContext();
+  await ensureActivitySupportSchema();
+  await q(
+    `update app_users set pending_password_hash=null,password_change_pin_hash=null,
+       password_change_pin_expires_at=null,password_change_attempts=0 where id=$1`,
+    [userId],
+  );
+  return { ok: true as const };
+});

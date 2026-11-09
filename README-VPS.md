@@ -212,6 +212,8 @@ O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do
 
 O SysAdm registra eventos de conta (cadastro, verificação, login/logout, alteração de perfil/senha), mensagens de suporte e criação de vendas, com usuário, data/hora e IP quando os headers do proxy estão disponíveis. O app reconhece `CF-Connecting-IP`, `X-Real-IP` e o primeiro endereço de `X-Forwarded-For`. Configure o proxy/CDN para sobrescrever esses headers com o endereço real do cliente; não confie em headers encaminhados diretamente por clientes sem filtragem. O chat de suporte é autenticado e separado por usuário.
 
+A troca da senha principal valida a senha atual e envia um PIN de seis dígitos ao email verificado da conta. A senha nova fica pendente até a confirmação do PIN, que expira em 10 minutos; há limite de cinco tentativas e intervalo mínimo de 60 segundos para solicitar outro código. O envio usa as mesmas variáveis SMTP do Poste.io já usadas para ativação de contas.
+
 ## 8. Atualizações do PDV
 
 O menu superior agora concentra:
