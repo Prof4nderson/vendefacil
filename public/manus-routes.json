@@ -1,0 +1,20 @@
+{
+  "routes": [
+    { "path": "/", "title": "PDV" },
+    { "path": "/admin", "title": "Administração" },
+    { "path": "/caixa", "title": "Caixa" },
+    { "path": "/cozinha", "title": "Cozinha" },
+    { "path": "/entrega", "title": "Entregas" },
+    { "path": "/favoritos", "title": "Favoritos" },
+    { "path": "/ofertas", "title": "Ofertas" },
+    { "path": "/pedidos", "title": "Pedidos" },
+    { "path": "/pedidos-a-caminho", "title": "Pedidos a caminho" },
+    { "path": "/radar-socorro", "title": "Radar de socorro" },
+    { "path": "/ranking-amigos", "title": "Ranking" },
+    { "path": "/compras-coletivas", "title": "Compras coletivas" },
+    { "path": "/fechamento-caixa", "title": "Fechamento de caixa" },
+    { "path": "/sysadm", "title": "Sistema" },
+    { "path": "/vendas", "title": "Vendas" },
+    { "path": "/pedido/:id", "title": "Pedido" }
+  ]
+}

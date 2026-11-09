@@ -80,6 +80,7 @@ import {
 } from "@/lib/schema.functions";
 import { Button } from "@/components/ui/button";
 import { SupportChat } from "@/components/support-chat";
+import { clearSaleDraft, getSaleDraft, saveSaleDraft } from "@/lib/local-store";
 
 export const Route = createFileRoute("/")({
   loader: async () => {
@@ -207,6 +208,7 @@ const fallbackCategories: Category[] = [
   { id: "drink", name: "Bebidas", sort_order: 2 },
   { id: "sweet", name: "Doces", sort_order: 3 },
 ];
+const DEFAULT_PAYMENT = PAYMENT_METHODS[0] ?? "Dinheiro";
 
 function PosPage() {
   const { menu, settings, suggestions, savedCustomers } = Route.useLoaderData();
@@ -264,7 +266,7 @@ function PosPage() {
     })),
   ]);
   const [activeCustomer, setActiveCustomer] = useState("consumer");
-  const [payment, setPayment] = useState(PAYMENT_METHODS[0]);
+  const [payment, setPayment] = useState(DEFAULT_PAYMENT);
   const [showPayment, setShowPayment] = useState(false);
   const [showAuth, setShowAuth] = useState<"login" | "signup" | null>(null);
   const [pinMode, setPinMode] = useState(false);
@@ -326,10 +328,19 @@ function PosPage() {
   const [fontScale, setFontScale] = useState(100);
   const [primaryColor, setPrimaryColor] = useState("#00d5ff");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [saleDraftLoaded, setSaleDraftLoaded] = useState(false);
 
   // Estado para os Pedidos Just-in-Time (JIT) em Tempo Real
-  const [jitOrders, setJitOrders] = useState<Array<{ id: string; customer: string; items: string; time: string; total: number }>>([
-    { id: "jit-101", customer: "Davi (Mesa 3 / JIT)", items: "2x X-Burguer + 1x Coca", time: "Há 1 min", total: 43.8 }
+  const [jitOrders, setJitOrders] = useState<
+    Array<{ id: string; customer: string; items: string; time: string; total: number }>
+  >([
+    {
+      id: "jit-101",
+      customer: "Davi (Mesa 3 / JIT)",
+      items: "2x X-Burguer + 1x Coca",
+      time: "Há 1 min",
+      total: 43.8,
+    },
   ]);
   const [newJitAlert, setNewJitAlert] = useState(true);
 
@@ -344,7 +355,54 @@ function PosPage() {
     setFontScale(Number(window.localStorage.getItem("vendefacil-font-scale") || 100));
     setPrimaryColor(window.localStorage.getItem("vendefacil-primary-color") || "#00d5ff");
     setPreferencesLoaded(true);
+    const draft = getSaleDraft();
+    if (draft) {
+      setCart(draft.cart);
+      setPayment(draft.payment || DEFAULT_PAYMENT);
+      setOrderType(draft.orderType);
+      setDeliveryAddress(draft.deliveryAddress);
+      setCreditAmount(draft.creditAmount);
+      if (draft.activeCustomer.id !== "consumer") {
+        setCustomers((old) =>
+          old.some((customer) => customer.id === draft.activeCustomer.id)
+            ? old
+            : [...old, draft.activeCustomer],
+        );
+      }
+      setActiveCustomer(draft.activeCustomer.id);
+      toast.info("Venda em andamento restaurada", {
+        description: "O rascunho foi recuperado após a atualização.",
+      });
+    }
+    setSaleDraftLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (!saleDraftLoaded) return;
+    const draftCustomer =
+      customers.find((customer) => customer.id === activeCustomer) ?? customers[0];
+    if (!draftCustomer || (!Object.keys(cart).length && activeCustomer === "consumer")) {
+      clearSaleDraft();
+      return;
+    }
+    saveSaleDraft({
+      cart,
+      activeCustomer: draftCustomer,
+      payment,
+      orderType,
+      deliveryAddress,
+      creditAmount,
+    });
+  }, [
+    activeCustomer,
+    cart,
+    creditAmount,
+    customers,
+    deliveryAddress,
+    orderType,
+    payment,
+    saleDraftLoaded,
+  ]);
 
   // Simulação de polling em tempo real JIT (WebSocket / Server-Sent Events stub)
   useEffect(() => {
@@ -354,7 +412,13 @@ function PosPage() {
       if (demoIncoming) {
         const newId = `jit-${Date.now().toString().slice(-3)}`;
         setJitOrders((prev) => [
-          { id: newId, customer: "Cliente JIT (App)", items: "1x Coxinha + 1x Suco", time: "Agora", total: 16.5 },
+          {
+            id: newId,
+            customer: "Cliente JIT (App)",
+            items: "1x Coxinha + 1x Suco",
+            time: "Agora",
+            total: 16.5,
+          },
           ...prev,
         ]);
         setNewJitAlert(true);
@@ -701,6 +765,7 @@ function PosPage() {
       );
       setActiveCustomer("consumer");
       setShowCustomerPanel(false);
+      clearSaleDraft();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível registrar a venda");
     } finally {
@@ -1200,9 +1265,13 @@ function PosPage() {
             </span>
             <div className="flex items-center gap-2">
               <BellRing className="h-4 w-4 text-primary animate-bounce" />
-              <span className="text-xs font-bold uppercase tracking-wider text-primary">Radar JIT Ativo:</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                Radar JIT Ativo:
+              </span>
               <span className="text-xs font-medium text-foreground">
-                {jitOrders.length > 0 ? `${jitOrders.length} pedido(s) antecipado(s) aguardando despacho.` : "Nenhum pedido JIT pendente."}
+                {jitOrders.length > 0
+                  ? `${jitOrders.length} pedido(s) antecipado(s) aguardando despacho.`
+                  : "Nenhum pedido JIT pendente."}
               </span>
             </div>
           </div>

@@ -13,7 +13,7 @@ export const getAppSession = () => {
     password,
     name: "vendefacil-account",
     maxAge: 60 * 60 * 24 * 30,
-    cookie: { httpOnly: true, secure: true, sameSite: "lax" as const, path: "/" },
+    cookie: { httpOnly: true, secure: true, sameSite: "none" as const, path: "/" },
   });
 };
 
