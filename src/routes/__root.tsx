@@ -14,7 +14,6 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeToggle } from "../components/theme-toggle";
 import { getSettings } from "../lib/public.functions";
-import { GroupBuyingGate } from "../components/group-buying-gate"; // 🚀 Importado o Alibaba do Davi
 
 function NotFoundComponent() {
   return (
@@ -128,10 +127,6 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <style>{`:root{--primary:${settings.primary_color};--ring:${settings.primary_color};}`}</style>
       <Outlet />
-      
-      {/* 🚀 O Gate de Compra Coletiva integrando o app na raiz */}
-      <GroupBuyingGate />
-
       <ThemeToggle />
       <Toaster position="top-center" richColors closeButton />
     </QueryClientProvider>

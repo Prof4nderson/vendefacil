@@ -9,9 +9,15 @@ export const Route = createFileRoute("/pedidos")({
   head: () => ({
     meta: [
       { title: "Meus pedidos — histórico e acompanhamento" },
-      { name: "description", content: "Veja seus pedidos recentes e acompanhe o preparo e a entrega." },
+      {
+        name: "description",
+        content: "Veja seus pedidos recentes e acompanhe o preparo e a entrega.",
+      },
       { property: "og:title", content: "Meus pedidos — histórico e acompanhamento" },
-      { property: "og:description", content: "Veja seus pedidos recentes e acompanhe o preparo e a entrega." },
+      {
+        property: "og:description",
+        content: "Veja seus pedidos recentes e acompanhe o preparo e a entrega.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "robots", content: "noindex" },
@@ -27,7 +33,9 @@ function MyOrdersPage() {
   return (
     <div className="mx-auto min-h-screen max-w-xl px-4 pb-28 pt-6">
       <h1 className="font-display text-3xl font-extrabold">Meus pedidos</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Toque em um pedido para acompanhar o status.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Toque em um pedido para acompanhar o status.
+      </p>
 
       <section className="mt-6 space-y-3">
         {orders.map((o) => (
@@ -35,6 +43,7 @@ function MyOrdersPage() {
             key={o.id}
             to="/pedido/$id"
             params={{ id: o.id }}
+            search={{ access: undefined }}
             className="glass-card flex items-center gap-3 rounded-[1.5rem] p-4"
           >
             <div className="icon-tile grid h-12 w-12 shrink-0 place-items-center rounded-2xl">
@@ -52,7 +61,10 @@ function MyOrdersPage() {
         {orders.length === 0 && (
           <div className="glass-card rounded-[1.5rem] py-16 text-center">
             <p className="text-muted-foreground">Você ainda não fez pedidos neste aparelho.</p>
-            <Link to="/" className="neon-button mt-4 inline-flex rounded-full px-5 py-3 text-sm font-bold">
+            <Link
+              to="/"
+              className="neon-button mt-4 inline-flex rounded-full px-5 py-3 text-sm font-bold"
+            >
               Fazer um pedido
             </Link>
           </div>

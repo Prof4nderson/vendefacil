@@ -16,7 +16,14 @@ const requiredTables = [
   "catalog_suggestions",
 ];
 const requiredColumns: Record<string, string[]> = {
-  orders: ["customer_id", "amount_paid", "credit_amount", "payment_status"],
+  orders: [
+    "customer_id",
+    "amount_paid",
+    "credit_amount",
+    "payment_status",
+    "source_ip",
+    "public_access_token_hash",
+  ],
   products: ["purchase_price", "min_stock", "stock_control", "workspace_id"],
   cash_entries: ["voided"],
   shifts: ["workspace_id"],
@@ -169,6 +176,11 @@ export const migrateSalesSchema = createServerFn({ method: "POST" }).handler(asy
     );
     await client.query(
       "alter table orders add column if not exists payment_status text not null default 'paid'",
+    );
+    await client.query("alter table orders add column if not exists source_ip text");
+    await client.query("alter table orders add column if not exists public_access_token_hash text");
+    await client.query(
+      "create index if not exists orders_public_rate_limit_idx on orders(workspace_id,source_ip,created_at desc) where public_access_token_hash is not null",
     );
     await client.query(
       "alter table shifts add column if not exists workspace_id uuid references workspaces(id)",

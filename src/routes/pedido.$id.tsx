@@ -7,7 +7,11 @@ import { getOrder } from "@/lib/public.functions";
 import { brl, ORDER_STATUS_LABELS } from "@/lib/format";
 
 export const Route = createFileRoute("/pedido/$id")({
-  loader: ({ params }) => getOrder({ data: { id: params.id } }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    access: typeof search["access"] === "string" ? search["access"] : undefined,
+  }),
+  loaderDeps: ({ search: { access } }) => ({ access }),
+  loader: ({ params, deps }) => getOrder({ data: { id: params.id, accessToken: deps.access } }),
   head: () => ({
     meta: [
       { title: "Acompanhar pedido" },
@@ -17,6 +21,7 @@ export const Route = createFileRoute("/pedido/$id")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "robots", content: "noindex" },
+      { name: "referrer", content: "no-referrer" },
     ],
   }),
   component: TrackPage,
@@ -33,12 +38,13 @@ const TOASTS: Record<string, string> = {
 
 function TrackPage() {
   const { id } = Route.useParams();
+  const { access } = Route.useSearch();
   const initial = Route.useLoaderData();
   const lastStatus = useRef(initial.order.status);
 
   const { data } = useQuery({
-    queryKey: ["order", id],
-    queryFn: () => getOrder({ data: { id } }),
+    queryKey: ["order", id, access],
+    queryFn: () => getOrder({ data: { id, accessToken: access } }),
     initialData: initial,
     refetchInterval: 10000,
   });
@@ -77,7 +83,9 @@ function TrackPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-xl px-4 py-6">
-      <Link to="/" className="text-sm text-muted-foreground underline">← Voltar ao cardápio</Link>
+      <Link to="/" className="text-sm text-muted-foreground underline">
+        ← Voltar ao cardápio
+      </Link>
 
       <div className="mt-4 rounded-3xl border border-border bg-card p-5">
         <div className="flex items-center justify-between">
@@ -90,7 +98,8 @@ function TrackPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {order.customer_name} • {isDelivery ? "Entrega" : "Consumo no estabelecimento"} • {order.payment_method}
+          {order.customer_name} • {isDelivery ? "Entrega" : "Consumo no estabelecimento"} •{" "}
+          {order.payment_method}
         </p>
 
         {order.status === "cancelled" ? (
@@ -107,16 +116,24 @@ function TrackPage() {
               return (
                 <li key={step.key} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-full ${done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                    <div
+                      className={`flex h-9 w-9 items-center justify-center rounded-full ${done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                    >
                       {current && order.status !== "delivered" && order.status !== "served" ? (
                         <Clock className="h-4 w-4 animate-pulse" />
                       ) : (
                         <Icon className="h-4 w-4" />
                       )}
                     </div>
-                    {i < steps.length - 1 && <div className={`h-8 w-0.5 ${done && currentIdx > stepIdx ? "bg-primary" : "bg-border"}`} />}
+                    {i < steps.length - 1 && (
+                      <div
+                        className={`h-8 w-0.5 ${done && currentIdx > stepIdx ? "bg-primary" : "bg-border"}`}
+                      />
+                    )}
                   </div>
-                  <p className={`pt-2 text-sm ${done ? "font-semibold" : "text-muted-foreground"}`}>{step.label}</p>
+                  <p className={`pt-2 text-sm ${done ? "font-semibold" : "text-muted-foreground"}`}>
+                    {step.label}
+                  </p>
                 </li>
               );
             })}
@@ -131,7 +148,9 @@ function TrackPage() {
             <li key={item.id} className="flex justify-between text-sm">
               <span>
                 {item.qty}× {item.name}
-                {item.notes && <span className="block text-xs text-muted-foreground">{item.notes}</span>}
+                {item.notes && (
+                  <span className="block text-xs text-muted-foreground">{item.notes}</span>
+                )}
               </span>
               <span className="font-medium">{brl(Number(item.price) * item.qty)}</span>
             </li>

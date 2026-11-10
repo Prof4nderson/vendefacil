@@ -206,7 +206,21 @@ No primeiro acesso de um workspace sem catálogo, o app apresenta uma tela de bo
 
 ### Multiusuário
 
-O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do estabelecimento como `owner`; a próxima etapa natural é adicionar convites de operadores e aplicar `workspace_id` nas consultas de produtos, pedidos, turnos e relatórios para isolamento completo entre estabelecimentos.
+O schema cria `workspaces` e `app_users`. O cadastro inicial cria o workspace do estabelecimento como `owner`; os dados operacionais são associados ao workspace para manter o isolamento entre estabelecimentos.
+
+### Portal público e pedidos de clientes
+
+Clientes podem descobrir estabelecimentos publicados em `/vendedores`, consultar o cardápio em `/cardapio/<workspaceId>` e enviar um pedido sem criar conta. O servidor recalcula preços, valida estoque e disponibilidade dentro de uma transação no workspace selecionado, reserva o estoque e grava o pedido como `confirmed`, com pagamento `Pendente` e sem registrar entrada de caixa. Assim, ele aparece na fila de pedidos/cozinha e permanece no fluxo de fechamento do vendedor; o vendedor registra o pagamento ao finalizar a venda. A confirmação inclui um link de acompanhamento com token aleatório, armazenado apenas como hash e válido por 30 dias. Pedidos públicos não criam crédito associado a uma conta de cliente.
+
+Em bancos já existentes, faça backup e aplique a migration antes de atualizar o app:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  < db/migrations/20261109_public_guest_orders.sql
+docker compose up -d --build app
+```
+
+O `db/schema.sql` já inclui essas colunas para instalações novas; a migration acima é idempotente.
 
 ### Auditoria e suporte
 

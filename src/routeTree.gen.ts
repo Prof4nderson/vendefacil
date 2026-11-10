@@ -12,18 +12,15 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as CaixaRouteImport } from './routes/caixa'
-import { Route as ComprasColetivasRouteImport } from './routes/compras-coletivas'
 import { Route as CozinhaRouteImport } from './routes/cozinha'
 import { Route as EntregaRouteImport } from './routes/entrega'
 import { Route as FavoritosRouteImport } from './routes/favoritos'
-import { Route as FechamentoCaixaRouteImport } from './routes/fechamento-caixa'
 import { Route as OfertasRouteImport } from './routes/ofertas'
 import { Route as PedidosRouteImport } from './routes/pedidos'
-import { Route as PedidosACaminhoRouteImport } from './routes/pedidos-a-caminho'
-import { Route as RadarSocorroRouteImport } from './routes/radar-socorro'
-import { Route as RankingAmigosRouteImport } from './routes/ranking-amigos'
 import { Route as SysadmRouteImport } from './routes/sysadm'
 import { Route as VendasRouteImport } from './routes/vendas'
+import { Route as VendedoresRouteImport } from './routes/vendedores'
+import { Route as CardapioWorkspaceIdRouteImport } from './routes/cardapio.$workspaceId'
 import { Route as PedidoIdRouteImport } from './routes/pedido.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,11 +38,6 @@ const CaixaRoute = CaixaRouteImport.update({
   path: '/caixa',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ComprasColetivasRoute = ComprasColetivasRouteImport.update({
-  id: '/compras-coletivas',
-  path: '/compras-coletivas',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CozinhaRoute = CozinhaRouteImport.update({
   id: '/cozinha',
   path: '/cozinha',
@@ -61,11 +53,6 @@ const FavoritosRoute = FavoritosRouteImport.update({
   path: '/favoritos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FechamentoCaixaRoute = FechamentoCaixaRouteImport.update({
-  id: '/fechamento-caixa',
-  path: '/fechamento-caixa',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OfertasRoute = OfertasRouteImport.update({
   id: '/ofertas',
   path: '/ofertas',
@@ -74,21 +61,6 @@ const OfertasRoute = OfertasRouteImport.update({
 const PedidosRoute = PedidosRouteImport.update({
   id: '/pedidos',
   path: '/pedidos',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PedidosACaminhoRoute = PedidosACaminhoRouteImport.update({
-  id: '/pedidos-a-caminho',
-  path: '/pedidos-a-caminho',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RadarSocorroRoute = RadarSocorroRouteImport.update({
-  id: '/radar-socorro',
-  path: '/radar-socorro',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RankingAmigosRoute = RankingAmigosRouteImport.update({
-  id: '/ranking-amigos',
-  path: '/ranking-amigos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SysadmRoute = SysadmRouteImport.update({
@@ -101,6 +73,16 @@ const VendasRoute = VendasRouteImport.update({
   path: '/vendas',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VendedoresRoute = VendedoresRouteImport.update({
+  id: '/vendedores',
+  path: '/vendedores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CardapioWorkspaceIdRoute = CardapioWorkspaceIdRouteImport.update({
+  id: '/cardapio/$workspaceId',
+  path: '/cardapio/$workspaceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PedidoIdRoute = PedidoIdRouteImport.update({
   id: '/pedido/$id',
   path: '/pedido/$id',
@@ -111,36 +93,30 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/caixa': typeof CaixaRoute
-  '/compras-coletivas': typeof ComprasColetivasRoute
   '/cozinha': typeof CozinhaRoute
   '/entrega': typeof EntregaRoute
   '/favoritos': typeof FavoritosRoute
-  '/fechamento-caixa': typeof FechamentoCaixaRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
-  '/pedidos-a-caminho': typeof PedidosACaminhoRoute
-  '/radar-socorro': typeof RadarSocorroRoute
-  '/ranking-amigos': typeof RankingAmigosRoute
   '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
+  '/vendedores': typeof VendedoresRoute
+  '/cardapio/$workspaceId': typeof CardapioWorkspaceIdRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/caixa': typeof CaixaRoute
-  '/compras-coletivas': typeof ComprasColetivasRoute
   '/cozinha': typeof CozinhaRoute
   '/entrega': typeof EntregaRoute
   '/favoritos': typeof FavoritosRoute
-  '/fechamento-caixa': typeof FechamentoCaixaRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
-  '/pedidos-a-caminho': typeof PedidosACaminhoRoute
-  '/radar-socorro': typeof RadarSocorroRoute
-  '/ranking-amigos': typeof RankingAmigosRoute
   '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
+  '/vendedores': typeof VendedoresRoute
+  '/cardapio/$workspaceId': typeof CardapioWorkspaceIdRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRoutesById {
@@ -148,18 +124,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/caixa': typeof CaixaRoute
-  '/compras-coletivas': typeof ComprasColetivasRoute
   '/cozinha': typeof CozinhaRoute
   '/entrega': typeof EntregaRoute
   '/favoritos': typeof FavoritosRoute
-  '/fechamento-caixa': typeof FechamentoCaixaRoute
   '/ofertas': typeof OfertasRoute
   '/pedidos': typeof PedidosRoute
-  '/pedidos-a-caminho': typeof PedidosACaminhoRoute
-  '/radar-socorro': typeof RadarSocorroRoute
-  '/ranking-amigos': typeof RankingAmigosRoute
   '/sysadm': typeof SysadmRoute
   '/vendas': typeof VendasRoute
+  '/vendedores': typeof VendedoresRoute
+  '/cardapio/$workspaceId': typeof CardapioWorkspaceIdRoute
   '/pedido/$id': typeof PedidoIdRoute
 }
 export interface FileRouteTypes {
@@ -168,54 +141,45 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/caixa'
-    | '/compras-coletivas'
     | '/cozinha'
     | '/entrega'
     | '/favoritos'
-    | '/fechamento-caixa'
     | '/ofertas'
     | '/pedidos'
-    | '/pedidos-a-caminho'
-    | '/radar-socorro'
-    | '/ranking-amigos'
     | '/sysadm'
     | '/vendas'
+    | '/vendedores'
+    | '/cardapio/$workspaceId'
     | '/pedido/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
     | '/caixa'
-    | '/compras-coletivas'
     | '/cozinha'
     | '/entrega'
     | '/favoritos'
-    | '/fechamento-caixa'
     | '/ofertas'
     | '/pedidos'
-    | '/pedidos-a-caminho'
-    | '/radar-socorro'
-    | '/ranking-amigos'
     | '/sysadm'
     | '/vendas'
+    | '/vendedores'
+    | '/cardapio/$workspaceId'
     | '/pedido/$id'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/caixa'
-    | '/compras-coletivas'
     | '/cozinha'
     | '/entrega'
     | '/favoritos'
-    | '/fechamento-caixa'
     | '/ofertas'
     | '/pedidos'
-    | '/pedidos-a-caminho'
-    | '/radar-socorro'
-    | '/ranking-amigos'
     | '/sysadm'
     | '/vendas'
+    | '/vendedores'
+    | '/cardapio/$workspaceId'
     | '/pedido/$id'
   fileRoutesById: FileRoutesById
 }
@@ -223,18 +187,15 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   CaixaRoute: typeof CaixaRoute
-  ComprasColetivasRoute: typeof ComprasColetivasRoute
   CozinhaRoute: typeof CozinhaRoute
   EntregaRoute: typeof EntregaRoute
   FavoritosRoute: typeof FavoritosRoute
-  FechamentoCaixaRoute: typeof FechamentoCaixaRoute
   OfertasRoute: typeof OfertasRoute
   PedidosRoute: typeof PedidosRoute
-  PedidosACaminhoRoute: typeof PedidosACaminhoRoute
-  RadarSocorroRoute: typeof RadarSocorroRoute
-  RankingAmigosRoute: typeof RankingAmigosRoute
   SysadmRoute: typeof SysadmRoute
   VendasRoute: typeof VendasRoute
+  VendedoresRoute: typeof VendedoresRoute
+  CardapioWorkspaceIdRoute: typeof CardapioWorkspaceIdRoute
   PedidoIdRoute: typeof PedidoIdRoute
 }
 
@@ -261,13 +222,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/compras-coletivas': {
-      id: '/compras-coletivas'
-      path: '/compras-coletivas'
-      fullPath: '/compras-coletivas'
-      preLoaderRoute: typeof ComprasColetivasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/cozinha': {
       id: '/cozinha'
       path: '/cozinha'
@@ -289,13 +243,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FavoritosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/fechamento-caixa': {
-      id: '/fechamento-caixa'
-      path: '/fechamento-caixa'
-      fullPath: '/fechamento-caixa'
-      preLoaderRoute: typeof FechamentoCaixaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/ofertas': {
       id: '/ofertas'
       path: '/ofertas'
@@ -308,27 +255,6 @@ declare module '@tanstack/react-router' {
       path: '/pedidos'
       fullPath: '/pedidos'
       preLoaderRoute: typeof PedidosRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pedidos-a-caminho': {
-      id: '/pedidos-a-caminho'
-      path: '/pedidos-a-caminho'
-      fullPath: '/pedidos-a-caminho'
-      preLoaderRoute: typeof PedidosACaminhoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/radar-socorro': {
-      id: '/radar-socorro'
-      path: '/radar-socorro'
-      fullPath: '/radar-socorro'
-      preLoaderRoute: typeof RadarSocorroRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ranking-amigos': {
-      id: '/ranking-amigos'
-      path: '/ranking-amigos'
-      fullPath: '/ranking-amigos'
-      preLoaderRoute: typeof RankingAmigosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sysadm': {
@@ -345,6 +271,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VendasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vendedores': {
+      id: '/vendedores'
+      path: '/vendedores'
+      fullPath: '/vendedores'
+      preLoaderRoute: typeof VendedoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cardapio/$workspaceId': {
+      id: '/cardapio/$workspaceId'
+      path: '/cardapio/$workspaceId'
+      fullPath: '/cardapio/$workspaceId'
+      preLoaderRoute: typeof CardapioWorkspaceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pedido/$id': {
       id: '/pedido/$id'
       path: '/pedido/$id'
@@ -359,18 +299,15 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   CaixaRoute: CaixaRoute,
-  ComprasColetivasRoute: ComprasColetivasRoute,
   CozinhaRoute: CozinhaRoute,
   EntregaRoute: EntregaRoute,
   FavoritosRoute: FavoritosRoute,
-  FechamentoCaixaRoute: FechamentoCaixaRoute,
   OfertasRoute: OfertasRoute,
   PedidosRoute: PedidosRoute,
-  PedidosACaminhoRoute: PedidosACaminhoRoute,
-  RadarSocorroRoute: RadarSocorroRoute,
-  RankingAmigosRoute: RankingAmigosRoute,
   SysadmRoute: SysadmRoute,
   VendasRoute: VendasRoute,
+  VendedoresRoute: VendedoresRoute,
+  CardapioWorkspaceIdRoute: CardapioWorkspaceIdRoute,
   PedidoIdRoute: PedidoIdRoute,
 }
 export const routeTree = rootRouteImport

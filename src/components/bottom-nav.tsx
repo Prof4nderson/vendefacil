@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { Gift, Heart, Home, ReceiptText } from "lucide-react";
+import { Gift, Heart, Home, ReceiptText, Store } from "lucide-react";
 
 const ITEMS = [
   { to: "/", icon: Home, label: "Início" },
   { to: "/ofertas", icon: Gift, label: "Ofertas" },
   { to: "/pedidos", icon: ReceiptText, label: "Pedidos" },
   { to: "/favoritos", icon: Heart, label: "Favoritos" },
+  { to: "/vendedores", icon: Store, label: "Vendedores" },
 ] as const;
 
 export function BottomNav() {

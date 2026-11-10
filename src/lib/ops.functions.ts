@@ -8,7 +8,9 @@ const ACTIVE_STATUSES = ["confirmed", "preparing", "ready", "out_for_delivery"];
 async function listOrdersByStatus(statuses: string[], workspaceId: string) {
   const { q } = await import("./db.server");
   const orders = await q<OrderRow>(
-    "select * from orders where workspace_id=$1 and status = any($2::text[]) order by created_at asc",
+    `select id,order_number,customer_name,customer_phone,order_type,address,payment_method,status,
+       total,notes,courier_id,courier_name,created_at,updated_at
+     from orders where workspace_id=$1 and status = any($2::text[]) order by created_at asc`,
     [workspaceId, statuses],
   );
   if (!orders.length) return { orders, items: [] as OrderItemRow[] };
@@ -39,20 +41,25 @@ export const setOrderStatus = createServerFn({ method: "POST" })
     const { workspaceId } = await requireTenantRole("cozinha");
     const { tx } = await import("./db.server");
     await tx(async (client) => {
-      await client.query("update orders set status = $1, updated_at = now() where id = $2 and workspace_id=$3", [
-        data.status,
-        data.orderId,
-        workspaceId,
-      ]);
+      const updated = await client.query<{ id: string }>(
+        `update orders set status = $1, updated_at = now()
+         where id = $2 and workspace_id=$3 and status not in ('cancelled','served','delivered')
+         returning id`,
+        [data.status, data.orderId, workspaceId],
+      );
+      if (!updated.rows[0]) throw new Error("Pedido não encontrado ou já finalizado");
       if (data.status === "cancelled") {
         // devolve o estoque
         await client.query(
           `update products p set stock = p.stock + i.qty
            from order_items i
-           where i.order_id = $1 and i.product_id = p.id`,
-          [data.orderId],
+           where i.order_id = $1 and i.product_id = p.id and p.workspace_id = $2`,
+          [data.orderId, workspaceId],
         );
-        await client.query("update cash_entries set voided=true where order_id=$1 and workspace_id=$2", [data.orderId, workspaceId]);
+        await client.query(
+          "update cash_entries set voided=true where order_id=$1 and workspace_id=$2",
+          [data.orderId, workspaceId],
+        );
       }
     });
     return { ok: true as const };
@@ -64,14 +71,18 @@ export const getDeliveryBoard = createServerFn({ method: "GET" }).handler(async 
   const { ops: session, workspaceId } = await requireTenantRole("entrega");
   const { q } = await import("./db.server");
   const ready = await q<OrderRow>(
-    `select * from orders
+    `select id,order_number,customer_name,customer_phone,order_type,address,payment_method,status,
+       total,notes,courier_id,courier_name,created_at,updated_at
+     from orders
      where workspace_id=$1 and status = 'ready' and order_type = 'delivery' and courier_id is null
      order by created_at asc`,
     [workspaceId],
   );
   const mine = session.courierId
     ? await q<OrderRow>(
-        `select * from orders
+        `select id,order_number,customer_name,customer_phone,order_type,address,payment_method,status,
+           total,notes,courier_id,courier_name,created_at,updated_at
+         from orders
          where workspace_id=$1 and courier_id = $2 and status = any($3::text[])
          order by created_at asc`,
         [workspaceId, session.courierId, ACTIVE_STATUSES],
@@ -108,7 +119,10 @@ export const toggleItemChecked = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { workspaceId } = await requireTenantRole("entrega");
     const { q } = await import("./db.server");
-    await q("update order_items set checked = $1 where id = $2 and exists (select 1 from orders where orders.id=order_items.order_id and orders.workspace_id=$3)", [data.checked, data.itemId, workspaceId]);
+    await q(
+      "update order_items set checked = $1 where id = $2 and exists (select 1 from orders where orders.id=order_items.order_id and orders.workspace_id=$3)",
+      [data.checked, data.itemId, workspaceId],
+    );
     return { ok: true as const };
   });
 
@@ -195,7 +209,10 @@ export const openShift = createServerFn({ method: "POST" })
       [workspaceId],
     );
     if (existing) throw new Error("Já existe um turno aberto");
-    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [workspaceId, data.opening_amount]);
+    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [
+      workspaceId,
+      data.opening_amount,
+    ]);
     return { ok: true as const };
   });
 
@@ -342,6 +359,9 @@ export const openPosShift = createServerFn({ method: "POST" })
       [workspaceId],
     );
     if (existing) throw new Error("Já existe um turno aberto");
-    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [workspaceId, data.opening_amount]);
+    await q("insert into shifts (workspace_id,opening_amount) values ($1,$2)", [
+      workspaceId,
+      data.opening_amount,
+    ]);
     return { ok: true as const };
   });
