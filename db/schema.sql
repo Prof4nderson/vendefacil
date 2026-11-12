@@ -295,11 +295,8 @@ alter table orders add column if not exists customer_id uuid references customer
 alter table orders add column if not exists amount_paid numeric(10,2) not null default 0;
 alter table orders add column if not exists credit_amount numeric(10,2) not null default 0;
 alter table orders add column if not exists payment_status text not null default 'paid' check (payment_status in ('paid','partial','credit'));
-alter table orders add column if not exists source_ip text;
-alter table orders add column if not exists public_access_token_hash text;
 create index if not exists customers_credit_idx on customers(credit_balance desc);
 create index if not exists orders_customer_idx on orders(customer_id, created_at desc);
-create index if not exists orders_public_rate_limit_idx on orders(workspace_id,source_ip,created_at desc) where public_access_token_hash is not null;
 
 insert into catalog_suggestions (category_name, name, description, suggested_purchase_price, suggested_price, icon) values
   ('Salgados','Coxinha cremosa','Frango com catupiry',3.20,7.50,'🍗'),
@@ -361,3 +358,8 @@ on conflict (name) do nothing;
 -- ============ Vendas administráveis ============
 alter table cash_entries add column if not exists voided boolean not null default false;
 create index if not exists orders_cancelled_idx on orders(status, created_at desc);
+-- Adicionando controle de indicação e bônus de pioneirismo na tabela de pedidos coletivos
+ALTER TABLE group_buying_orders 
+ADD COLUMN referral_code VARCHAR(50),
+ADD COLUMN referred_by VARCHAR(50),
+ADD COLUMN is_early_bird BOOLEAN DEFAULT FALSE; -- Para quem garantiu nos primeiros minutos
